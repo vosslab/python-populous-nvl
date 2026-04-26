@@ -1,3 +1,5 @@
+#!/usr/bin/env python3
+
 import pygame
 import random
 import os
@@ -30,7 +32,7 @@ class Game:
         # Charger l'interface pour déterminer la taille de l'écran
         ui_path = os.path.join(GFX_DIR, "AmigaUI.png")
         ui_raw = pygame.image.load(ui_path)
-        # Initialisation des zones interactives de l'interface ---        
+        # Initialisation des zones interactives de l'interface ---
         self.base_size = ui_raw.get_size()
         self.display_scale = 3
 
@@ -54,7 +56,7 @@ class Game:
         # Coordonnées en dur pour la pointe de la zone diamant
         settings.MAP_OFFSET_X = 192
         settings.MAP_OFFSET_Y = 64
-        
+
         for mod in (game_map, peep, settings):
             mod.SCREEN_WIDTH = settings.SCREEN_WIDTH
             mod.SCREEN_HEIGHT = settings.SCREEN_HEIGHT
@@ -106,7 +108,7 @@ class Game:
         cx, cy = 64, 168 # Centre de base
         dx, dy = 16, 8   # Décalage isométrique
         hw, hh = 16, 8   # Taille isométrique pour les boutons
-        
+
         # 5 lignes de 9 7 5 3 1 actions positionnées "en dur"
         # Initialisation du feedback bouton (sprite)
         self.last_button_click = None
@@ -771,7 +773,7 @@ class Game:
         self._draw_shield_panel(self.internal_surface)
 
         # Suppression de l'affichage des cases violettes (debug UI)
-        
+
         # Scale internal surface to display window size
         scaled_surface = pygame.transform.scale(self.internal_surface, self.screen.get_size())
         self.screen.blit(scaled_surface, (0, 0))

@@ -42,7 +42,7 @@ def main():
     running = True
     while running:
         dt = clock.tick(60) / 1000.0
-        
+
         for event in pygame.event.get():
             if event.type == pygame.QUIT:
                 running = False
@@ -57,13 +57,13 @@ def main():
 
         # Rendu strict en 1:1
         screen.fill((0, 0, 0))
-        
+
         # Affichage classique isométrique
         for r in range(current_map.grid_height):
             for c in range(current_map.grid_width):
                 tile_key = current_map.get_tile_key(r, c)
                 tile_surf = current_map.tile_surfaces.get(tile_key)
-                
+
                 if tile_surf:
                     a = current_map.get_corner_altitude(r, c)
                     px, py = current_map.world_to_screen(r, c, a)

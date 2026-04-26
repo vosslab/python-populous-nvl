@@ -31,7 +31,7 @@ class House:
                 if (self.r, self.c) in getattr(other, 'occupied_tiles', []):
                     center_conflict = True
                     break
-        
+
         if center_conflict:
             self.destroyed = True
             return
@@ -53,17 +53,17 @@ class House:
 
         # Paliers de score sur les 24 cases adjacentes
         thresholds = [0, 1, 2, 5, 8, 11, 14, 19, 22, 24]
-        
+
         max_tier = 0
         for i, thresh in enumerate(thresholds):
             if score >= thresh:
                 max_tier = i
-        
+
         max_tier = min(len(self.TYPES) - 1, max_tier)
-        
+
         # Le bâtiment prend immédiatement la taille maximale disponible
         current_tier = max_tier
-        
+
         # Nouvelle logique : croissance de la santé selon la matrice
         growth_speed = self.GROWTH_SPEEDS[max_tier]
         self.max_life = self.MAX_HEALTHS[max_tier]

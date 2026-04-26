@@ -12,10 +12,10 @@ def load_tile_surfaces():
     # Découpage du nouveau format AmigaTiles (32x24 pixels, décalage x=12 y=10)
     tile_w = 32
     tile_h = 24
-    
+
     x_starts = [12 + i * 35 for i in range(9)]
     x_ends = [x + tile_w for x in x_starts]
-    
+
     y_starts = [10 + i * 27 for i in range(8)]
     y_ends = [y + tile_h for y in y_starts]
 
@@ -28,7 +28,7 @@ def load_tile_surfaces():
             # Gérer le cas de la dernière ligne restreinte sur les AmigaTiles (seulement 5 tiles)
             if row == 7 and col > 4:
                 continue
-                
+
             x0, x1 = x_starts[col], x_ends[col]
             y0, y1 = y_starts[row], y_ends[row]
             tw, th = x1 - x0, y1 - y0
@@ -36,12 +36,12 @@ def load_tile_surfaces():
                 sub = sheet.subsurface(pygame.Rect(x0, y0, tw, th)).copy()
             except ValueError:
                 continue
-                
+
             if tw < ref_w or th < ref_h:
                 padded = pygame.Surface((ref_w, ref_h), pygame.SRCALPHA)
                 padded.blit(sub, (0, 0))
                 sub = padded
-                
+
             # No scaling
             tiles[(row, col)] = sub
     return tiles
@@ -89,19 +89,19 @@ class GameMap:
         end_r = min(self.grid_height + 1, int(cam_r) + 12)
         start_c = max(0, int(cam_c) - 2)
         end_c = min(self.grid_width + 1, int(cam_c) + 12)
-        
+
         for r in range(start_r, end_r):
             for c in range(start_c, end_c):
                 alt = self.get_corner_altitude(r, c)
                 px, py = self.world_to_screen(r, c, alt, cam_r, cam_c)
-                
+
                 # Le centre de gravité visuel de l'intersection de la grille isométrique
                 # est décalé vers le bas de TILE_HALF_H (8 pixels) par rapport au top
                 target_y = py + TILE_HALF_H
-                
+
                 # Prendre en compte le ratio isométrique (2:1) pour la forme de la zone de clic
                 d = (sx - px) ** 2 + ((sy - target_y) * 2) ** 2
-                
+
                 if d < min_dist:
                     min_dist = d
                     best_r, best_c = r, c
@@ -226,10 +226,10 @@ class GameMap:
         import settings
         X = sx - settings.MAP_OFFSET_X
         Y = sy - settings.MAP_OFFSET_Y
-        
+
         U = X / settings.TILE_HALF_W
         V = Y / settings.TILE_HALF_H
-        
+
         local_c = (U + V) / 2
         local_r = (V - U) / 2
         return int(local_r + cam_r), int(local_c + cam_c)
@@ -260,7 +260,7 @@ class GameMap:
 
         if not (a == b == c_ == d and a > 0):
             return -1, []  # La tuile centrale n'est plus plane
-            
+
         base_alt = a
         valid_tiles = []
 
@@ -277,7 +277,7 @@ class GameMap:
                 nd = self.get_corner_altitude(nr + 1, nc)
                 if na == nb == nc_ == nd == base_alt:
                     valid_tiles.append((nr, nc))
-                    
+
         return len(valid_tiles), valid_tiles
 
     def draw_houses(self, surface, cam_r=0, cam_c=0, show_debug=False, debug_font=None):

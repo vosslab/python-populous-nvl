@@ -77,7 +77,7 @@ def load_and_draw_tiles(screen, image_name, args):
     font = pygame.font.SysFont("consolas", 11)
     font_pos = pygame.font.SysFont("consolas", 13, bold=True)
     font_btn = pygame.font.SysFont("consolas", 14, bold=True)
-    
+
     sheet_path = os.path.join(GFX_DIR, image_name) if not os.path.isabs(image_name) else image_name
     if not os.path.exists(sheet_path):
         print(f"Erreur : {sheet_path} introuvable.")
@@ -92,10 +92,10 @@ def load_and_draw_tiles(screen, image_name, args):
     if "AmigaTiles" in image_name:
         args.tile_width = 32
         args.tile_height = 24
-        
+
         x_starts = [12 + i * 35 for i in range(9)]
         x_ends = [x + args.tile_width for x in x_starts]
-        
+
         y_starts = [10 + i * 27 for i in range(8)]
         y_ends = [y + args.tile_height for y in y_starts]
 
@@ -108,7 +108,7 @@ def load_and_draw_tiles(screen, image_name, args):
             x_starts.append(x)
             x_ends.append(x + args.tile_width)
             x += args.tile_width + args.margin_x
-            
+
         y_starts = []
         y_ends = []
         y = 0
@@ -116,7 +116,7 @@ def load_and_draw_tiles(screen, image_name, args):
             y_starts.append(y)
             y_ends.append(y + args.tile_height)
             y += args.tile_height + args.margin_y
-            
+
     else:
         # Configuration legacy pour le tileset Populous originel
         x_starts = [0] + [e + 1 for _, e in TILES_V_LINES]
@@ -139,7 +139,7 @@ def load_and_draw_tiles(screen, image_name, args):
             # Gérer le cas de la dernière ligne restreinte sur les AmigaTiles (seulement 5 tiles)
             if "AmigaTiles" in image_name and r == 7 and c > 4:
                 continue
-                
+
             x0, x1 = x_starts[c], x_ends[c]
             y0, y1 = y_starts[r], y_ends[r]
             tw, th = x1 - x0, y1 - y0
@@ -173,7 +173,7 @@ def load_and_draw_tiles(screen, image_name, args):
 
     bg_color = (30, 30, 30)
     screen.fill(bg_color)
-    
+
     # Dessiner les boutons
     btn_names = ["AmigaTiles1.PNG", "AmigaTiles2.PNG", "AmigaTiles3.PNG", "AmigaTiles4.PNG"]
     buttons = []
@@ -238,7 +238,7 @@ def main():
     pygame.init()
     screen = pygame.display.set_mode((800, 600))
     current_image = args.image
-    
+
     screen, buttons = load_and_draw_tiles(screen, current_image, args)
 
     running = True

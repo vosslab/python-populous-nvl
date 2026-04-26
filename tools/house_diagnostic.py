@@ -53,7 +53,7 @@ class PositioningTest:
         # Paliers de score sur les 24 cases adjacentes
         thresholds = [0, 1, 2, 5, 8, 11, 14, 19, 22, 24]
         required_score = thresholds[self.selected_idx]
-        
+
         # La plateforme centrale (bâtiment) est toujours construite
         self.game_map.corners[h_r][h_c] = 2
         self.game_map.corners[h_r][h_c+1] = 2
@@ -64,7 +64,7 @@ class PositioningTest:
         offsets = [(dr, dc) for dr in range(-2, 3) for dc in range(-2, 3) if not (dr == 0 and dc == 0)]
         # Tri par distance du centre pour avoir une expansion concentrique naturelle
         offsets.sort(key=lambda p: p[0]**2 + p[1]**2)
-        
+
         for i in range(required_score):
             dr, dc = offsets[i]
             tr = h_r + dr
@@ -86,7 +86,7 @@ class PositioningTest:
 
         # On simule un peep sur ou juste devant le bâtiment
         self.peep = Peep(h_r, h_c, self.game_map)
-        
+
         # Optionnel: on fige un peu les coordonnées du Peep pour qu'il soit bien centré sur sa tuile
         self.peep.x = h_c + 0.5
         self.peep.y = h_r + 0.5
@@ -115,9 +115,9 @@ class PositioningTest:
             # 1) Dessiner la map sur une surface hors-écran (pour pouvoir zoomer)
             map_surface = pygame.Surface((SCREEN_WIDTH, SCREEN_HEIGHT))
             map_surface.fill((40, 40, 40))
-            
+
             cam_r, cam_c = 0, 0
-            
+
             self.game_map.draw(map_surface, cam_r, cam_c)
             self.game_map.draw_houses(map_surface, cam_r, cam_c)
             if self.peep:
@@ -128,10 +128,10 @@ class PositioningTest:
             view_w, view_h = 260, 200  # Zone capturée, 260x3 = 780 (largeur reste d'écran), 200x3 = 600
             view_rect = pygame.Rect(sx - view_w // 2, sy - view_h // 2, view_w, view_h)
             view_rect.clamp_ip(map_surface.get_rect())
-            
+
             sub = map_surface.subsurface(view_rect)
             scaled_sub = pygame.transform.scale(sub, (view_rect.width * 3, view_rect.height * 3))
-            
+
             # Application sur l'écran (fond noir)
             self.screen.fill((20, 20, 20))
             # On place la carte zoomée à droite de l'UI (largeur UI ~220)

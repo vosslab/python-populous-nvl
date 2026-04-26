@@ -40,7 +40,7 @@ def load_and_draw_tiles(screen, image_name, args):
     font = pygame.font.SysFont("consolas", 11)
     font_pos = pygame.font.SysFont("consolas", 13, bold=True)
     font_btn = pygame.font.SysFont("consolas", 14, bold=True)
-    
+
     sheet_path = os.path.join(GFX_DIR, image_name) if not os.path.isabs(image_name) else image_name
     if not os.path.exists(sheet_path):
         print(f"Erreur : {sheet_path} introuvable.")
@@ -58,10 +58,10 @@ def load_and_draw_tiles(screen, image_name, args):
     if "AmigaSprites" in image_name:
         args.tile_width = 16
         args.tile_height = 16
-        
+
         start_x, start_y = 11, 10
         stride_x, stride_y = 20, 20
-        
+
         x_starts = [start_x + i * stride_x for i in range(16)]
         x_ends = [x + args.tile_width for x in x_starts]
         y_starts = [start_y + j * stride_y for j in range(9)]
@@ -76,7 +76,7 @@ def load_and_draw_tiles(screen, image_name, args):
             x_starts.append(x)
             x_ends.append(x + args.tile_width)
             x += args.tile_width + args.margin_x
-            
+
         y_starts = []
         y_ends = []
         y = 0
@@ -84,7 +84,7 @@ def load_and_draw_tiles(screen, image_name, args):
             y_starts.append(y)
             y_ends.append(y + args.tile_height)
             y += args.tile_height + args.margin_y
-            
+
     else:
         # Configuration legacy pour Sprites.PNG
         args.tile_width = 32
@@ -140,7 +140,7 @@ def load_and_draw_tiles(screen, image_name, args):
 
     bg_color = (30, 30, 30)
     screen.fill(bg_color)
-    
+
     # Dessiner les boutons
     btn_names = ["AmigaSprites1.PNG"]
     buttons = []
@@ -205,7 +205,7 @@ def main():
     pygame.init()
     screen = pygame.display.set_mode((800, 600))
     current_image = args.image
-    
+
     screen, buttons = load_and_draw_tiles(screen, current_image, args)
 
     running = True

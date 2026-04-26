@@ -8,19 +8,19 @@ SPRITE_EXTRACT_SIZE = 16  # Taille dans le spritesheet source
 
 
 def load_sprite_surfaces():
-    """Charge le sprite sheet et découpe les sprites 16x16 selon un format fixe (AmigaSprites)."""
+    """Charge le sprite sheet et decoupe les sprites 16x16 selon un format fixe (AmigaSprites)."""
     sheet_raw = pygame.image.load(SPRITES_PATH).convert()
-    
+
     # Fond vert transparent Amiga
     sheet_raw.set_colorkey((0, 49, 0))
     sheet = sheet_raw.convert_alpha()
 
     start_x, start_y = 11, 10
     stride_x, stride_y = 20, 20
-    
+
     x_starts = [start_x + i * stride_x for i in range(16)]
     y_starts = [start_y + j * stride_y for j in range(9)]
-    
+
     sprites = {}
     for r, y0 in enumerate(y_starts):
         for c, x0 in enumerate(x_starts):
@@ -29,12 +29,12 @@ def load_sprite_surfaces():
             except ValueError:
                 continue
 
-            # Supprimer le fond noir résiduel → transparent
+            # Supprimer le fond noir residuel -> transparent
             arr = pygame.surfarray.pixels3d(sub)
             alpha = pygame.surfarray.pixels_alpha(sub)
             mask = ((arr[:, :, 0] == 0) & (arr[:, :, 1] == 0) & (arr[:, :, 2] == 0))
             alpha[mask] = 0
-            del arr, alpha  # libérer les locks surfarray
+            del arr, alpha  # liberer les locks surfarray
 
             sub = pygame.transform.scale(sub, (SPRITE_SIZE, SPRITE_SIZE))
 
@@ -51,7 +51,7 @@ def load_sprite_surfaces():
 # Row 8: UI elements
 
 
-# Directions en isométrique: 0=SE, 1=S, 2=SW, 3=W, 4=NW, 5=N, 6=NE, 7=E
+# Directions en isometrique: 0=SE, 1=S, 2=SW, 3=W, 4=NW, 5=N, 6=NE, 7=E
 # Simplified: we use row 0 columns for walk animation in a direction
 WALK_FRAMES = {
     'N':      [(0,  0), (0,  1)],
@@ -95,9 +95,9 @@ class Peep:
         self.facing = 'IDLE'
         self.is_moving = False
         self.energy_yellow = 0   # barres jaunes restantes
-        self.energy_orange = 1.0  # fraction de la barre orange courante (0→1)
+        self.energy_orange = 1.0  # fraction de la barre orange courante (0->1)
         self.in_house = False
-        self.weapon_type = 'hut' # Arme de départ : arme 0 (hut)
+        self.weapon_type = 'hut' # Arme de depart : arme 0 (hut)
 
     def update(self, dt):
         if self.dead:
@@ -113,7 +113,7 @@ class Peep:
 
         self.anim_timer += dt
 
-        # Détecter si le peep est sur une tile eau (les 4 coins de la tile à 0)
+        # Detecter si le peep est sur une tile eau (les 4 coins de la tile a 0)
         gr_cur, gc_cur = int(self.y), int(self.x)
         if (0 <= gr_cur < self.game_map.grid_height and 0 <= gc_cur < self.game_map.grid_width):
             a0 = self.game_map.get_corner_altitude(gr_cur,     gc_cur)
@@ -126,7 +126,7 @@ class Peep:
 
         # Animation :
         if on_water:
-            # Animation loop simple sur 4 frames (5,8 à 5,11)
+            # Animation loop simple sur 4 frames (5,8 a 5,11)
             if not hasattr(self, '_drown_anim_idx'):
                 self._drown_anim_idx = 0
             if self.anim_timer > 0.18:
@@ -144,8 +144,8 @@ class Peep:
             self.dir_timer = 0.0
             self.direction = random.uniform(0, 2 * math.pi)
 
-        # Déplacement
-        speed = PEEP_SPEED * dt / 64.0  # Normaliser par rapport à la taille du tile
+        # Deplacement
+        speed = PEEP_SPEED * dt / 64.0  # Normaliser par rapport a la taille du tile
         dx = math.cos(self.direction) * speed
         dy = math.sin(self.direction) * speed
 
@@ -156,7 +156,7 @@ class Peep:
         new_x = max(0.1, min(self.game_map.grid_width - 0.1, new_x))
         new_y = max(0.1, min(self.game_map.grid_height - 0.1, new_y))
 
-        # Vérifier que la destination n'est pas de l'eau
+        # Verifier que la destination n'est pas de l'eau
         old_x, old_y = self.x, self.y
         gr, gc = int(new_y), int(new_x)
         if 0 <= gr < self.game_map.grid_height and 0 <= gc < self.game_map.grid_width:
@@ -167,7 +167,7 @@ class Peep:
 
         self.is_moving = (self.x != old_x or self.y != old_y)
 
-        # Détecter si le peep est sur une tile eau (les 4 coins de la tile à 0)
+        # Detecter si le peep est sur une tile eau (les 4 coins de la tile a 0)
         gr_cur, gc_cur = int(self.y), int(self.x)
         if (0 <= gr_cur < self.game_map.grid_height and 0 <= gc_cur < self.game_map.grid_width):
             a0 = self.game_map.get_corner_altitude(gr_cur,     gc_cur)
@@ -178,13 +178,13 @@ class Peep:
         else:
             on_water = False
 
-        # Mettre à jour la direction visuelle (8 directions)
+        # Mettre a jour la direction visuelle (8 directions)
         if on_water:
             self.facing = 'DROWN'
         elif self.is_moving:
-            # Projeter le déplacement grille vers l'espace écran isométrique
+            # Projeter le deplacement grille vers l'espace ecran isometrique
             # world_to_screen: sx = (c-r)*TILE_HALF_W, sy = (c+r)*TILE_HALF_H
-            # dx = déplacement en c, dy = déplacement en r
+            # dx = deplacement en c, dy = deplacement en r
             screen_dx = (dx - dy) * TILE_HALF_W
             screen_dy = (dx + dy) * TILE_HALF_H
             angle = math.degrees(math.atan2(screen_dy, screen_dx)) % 360
@@ -204,10 +204,10 @@ class Peep:
         if self.game_map.can_place_house_initial(gr, gc):
             self.build_timer = 0.0
             from house import House
-            # On détermine la vie max du bâtiment
+            # On determine la vie max du batiment
             from house import House
-            max_life = House.MAX_HEALTHS[0]  # hut par défaut
-            # On estime le type de bâtiment selon le terrain
+            max_life = House.MAX_HEALTHS[0]  # hut par defaut
+            # On estime le type de batiment selon le terrain
             score, valid_tiles = self.game_map.get_flat_area_score(gr, gc, current_house=None)
             thresholds = [0, 1, 2, 5, 8, 11, 14, 19, 22, 24]
             max_tier = 0
@@ -217,7 +217,7 @@ class Peep:
             max_tier = min(len(House.TYPES) - 1, max_tier)
             max_life = House.MAX_HEALTHS[max_tier]
 
-            # Si le peep a plus de vie que la vie max du bâtiment, on génère un peep avec l'excédent
+            # Si le peep a plus de vie que la vie max du batiment, on genere un peep avec l'excedent
             excess_life = self.life - max_life
             house = House(gr, gc, life=min(self.life, max_life))
             self.game_map.add_house(house)
@@ -226,12 +226,12 @@ class Peep:
             self.dead = True
 
             if excess_life > 0:
-                # Cherche une case adjacente libre pour le peep excédentaire
+                # Cherche une case adjacente libre pour le peep excedentaire
                 offsets = [(-1,0),(1,0),(0,-1),(0,1),(-1,-1),(-1,1),(1,-1),(1,1)]
                 for dr, dc in offsets:
                     nr, nc = gr + dr, gc + dc
                     if 0 <= nr < self.game_map.grid_height and 0 <= nc < self.game_map.grid_width:
-                        # On vérifie que la case n'est pas de l'eau et pas déjà occupée par une maison
+                        # On verifie que la case n'est pas de l'eau et pas deja occupee par une maison
                         alt = self.game_map.get_corner_altitude(nr, nc)
                         occupied = any((nr, nc) in getattr(h, 'occupied_tiles', []) for h in self.game_map.houses)
                         if alt > 0 and not occupied:
@@ -249,7 +249,7 @@ class Peep:
         fx = self.x - gc  # fraction horizontale dans la tile
         fy = self.y - gr  # fraction verticale dans la tile
 
-        # Interpolation bilinéaire de l'altitude selon la position dans la tile
+        # Interpolation bilineaire de l'altitude selon la position dans la tile
         if (0 <= gr < self.game_map.grid_height and 0 <= gc < self.game_map.grid_width):
             a_nw = self.game_map.get_corner_altitude(gr,     gc)
             a_ne = self.game_map.get_corner_altitude(gr,     gc + 1)
@@ -261,7 +261,7 @@ class Peep:
             alt = 0
 
         sx, sy = self.game_map.world_to_screen(self.y, self.x, alt, cam_x, cam_y)
-        # Sol visuel : la coordonnée sy intègre déjà l'altitude (alt * 8)
+        # Sol visuel : la coordonnee sy integre deja l'altitude (alt * 8)
         ground_y = sy + TILE_HALF_H
 
         sprites = self.get_sprites()
@@ -269,7 +269,7 @@ class Peep:
         if self.facing == 'DROWN':
             # Animation pingpong sur 4 frames
             anim_len = 4
-            # self.anim_frame est déjà l'indice pingpong (0,1,2,3,2,1...)
+            # self.anim_frame est deja l'indice pingpong (0,1,2,3,2,1...)
             frame_key = (5, 8 + self.anim_frame)
         else:
             anim_len = len(frames)

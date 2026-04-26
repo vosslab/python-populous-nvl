@@ -192,7 +192,7 @@ Faits prouves:
 - Appelle _place_people pour chaque spawn.
 
 ## 5. Constantes et seuils numeriques (Peeps)
-- 0x00d0: cap population (place_people, scans de split). 
+- 0x00d0: cap population (place_people, scans de split).
   - asm/populous_prg.asm:43168, 40f18.
 - 0x0016: stride index peep logique.
   - asm/populous_prg.asm:406f0, 420bc, 431ce.

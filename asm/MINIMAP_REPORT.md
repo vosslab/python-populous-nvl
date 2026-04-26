@@ -38,14 +38,14 @@ Lorsque le joueur cliquait sur la minimap, la caméra de la vue isométrique pri
 Les données `_mousex` et `_mousey` capturées sont transformées pour devenir le décalage de la caméra de jeu, contrôlé par les variables `_xoff` et `_yoff`.
 
 ```assembly
-    MOVE.W  (_mousex,A4),D0 
+    MOVE.W  (_mousex,A4),D0
     ASR.W   #1,D0            ; D0 = mousex / 2
     SUB.W   #$0020,D0        ; Soustrait 32 (la moitié de la diagonale radar)
 ```
 Le point cliqué est rescalé à la taille des coordonnées de tuiles de la map (64x64). Le programme doit s'assurer que la caméra ne dépasse pas les bords du monde.
 
 ### Bornes de la Map (Limitation)
-La vue principale du joueur couvre typiquement un bloc de 8x8 tuiles à la fois. Par conséquent, les pointeurs de la caméra `_xoff` et `_yoff` ne peuvent pas atteindre 64, sous peine de rendre un "hors limite". 
+La vue principale du joueur couvre typiquement un bloc de 8x8 tuiles à la fois. Par conséquent, les pointeurs de la caméra `_xoff` et `_yoff` ne peuvent pas atteindre 64, sous peine de rendre un "hors limite".
 
 ```assembly
     CMPI.W  #$0038,D0        ; Contôle strict: est-ce plus grand que 56 (0x38) ?
