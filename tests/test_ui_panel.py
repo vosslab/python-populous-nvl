@@ -21,24 +21,27 @@ class TestUIPanel:
 		assert '_do_shield' in panel.buttons
 
 	def test_hit_test_button_center(self):
-		"""Test hit_test_button at button center."""
+		"""Test hit_test_button at the center of a real button.
+
+		_find_shield was removed in M2 (no shield-bearer concept in
+		code; see docs/active_plans/m2_button_gaps.md). The base center
+		coordinate is now unoccupied. Use a known-present button center.
+		"""
 		game = MockGame()
 		panel = ui_panel.UIPanel(game)
-		# Get the center of _find_shield button (should be at 64, 168)
-		action = panel.hit_test_button(64, 168)
-		assert action == '_find_shield'
+		cx, cy = panel.buttons['_raise_terrain']['c']
+		action = panel.hit_test_button(cx, cy)
+		assert action == '_raise_terrain'
 
 	def test_hit_test_button_inside_diamond(self):
 		"""Test hit_test_button inside diamond bounding box."""
 		game = MockGame()
 		panel = ui_panel.UIPanel(game)
-		# _find_shield is at (64, 168) with hw=16, hh=8
-		# Inside the diamond: (64, 168) is center
-		action = panel.hit_test_button(64, 168)
-		assert action == '_find_shield'
-		# Also test a nearby point (still inside)
-		action = panel.hit_test_button(70, 168)
-		assert action == '_find_shield'
+		cx, cy = panel.buttons['_raise_terrain']['c']
+		# Center is reachable.
+		assert panel.hit_test_button(cx, cy) == '_raise_terrain'
+		# A point a few pixels along the x axis stays inside the diamond.
+		assert panel.hit_test_button(cx + 4, cy) == '_raise_terrain'
 
 	def test_hit_test_button_outside_all(self):
 		"""Test hit_test_button outside all buttons returns None."""
@@ -49,12 +52,11 @@ class TestUIPanel:
 		assert action is None
 
 	def test_hit_test_button_edge_outside(self):
-		"""Test hit_test_button just outside diamond edge."""
+		"""Test hit_test_button far from any button center returns None."""
 		game = MockGame()
 		panel = ui_panel.UIPanel(game)
-		# _find_shield at (64, 168) with hw=16, hh=8
-		# Point far outside: (100, 168) - distance > hw
-		action = panel.hit_test_button(100, 200)
+		# Pick a viewport interior point well clear of every button.
+		action = panel.hit_test_button(160, 100)
 		assert action is None
 
 	def test_button_names_exist(self):

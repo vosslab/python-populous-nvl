@@ -19,6 +19,41 @@ else:
 SCREEN_WIDTH: int = 320
 SCREEN_HEIGHT: int = 200
 
+# === Canvas presets (M4 canvas modernization) ===
+# The remaster supports three internal-canvas presets. The logical UI
+# coordinate space remains 320x200 in every preset; presentation scales
+# by 1x, 2x, or 4x at blit time. Switching presets must not change
+# simulation outcomes (canvas size is presentation only).
+#
+# Each preset declares (internal_width, internal_height, hud_scale,
+# visible_tile_count). The hud_scale multiplies the 320x200 AmigaUI
+# sprite at nearest-neighbor blit time so no new HUD art is required.
+CANVAS_PRESETS: dict = {
+    'classic':  (320,  200, 1, 8),
+    'remaster': (640,  400, 2, 12),
+    'large':    (1280, 800, 4, 16),
+}
+
+# Active preset selected at boot. The remaster (640x400) and large
+# (1280x800) presets exercise the layout helpers correctly for HUD
+# scaling and simulation parity, but the iso terrain diamond does NOT
+# yet fill the bigger HUD viewport hole correctly: tile pixel spacing
+# (TILE_HALF_W / TILE_HALF_H) is preset-independent, so a 12-tile
+# diamond at remaster occupies less of the upscaled hole than the
+# 8-tile diamond did at classic, and `MAP_OFFSET_Y` is not recentered
+# for the upscaled hole. Default reverts to `classic` until that
+# layout work lands. The 1920x1200 OS window the remaster default
+# produced also exceeded common laptop screens (`display_scale = 3`
+# multiplies internal width by 3, so 640 -> 1920).
+ACTIVE_CANVAS_PRESET: str = 'classic'
+
+# Convenience accessors. Mirror the SCREEN_WIDTH/HEIGHT pair so existing
+# code keeps reading the same names. Layout helpers prefer these.
+INTERNAL_WIDTH: int = CANVAS_PRESETS[ACTIVE_CANVAS_PRESET][0]
+INTERNAL_HEIGHT: int = CANVAS_PRESETS[ACTIVE_CANVAS_PRESET][1]
+HUD_SCALE: int = CANVAS_PRESETS[ACTIVE_CANVAS_PRESET][2]
+VISIBLE_TILE_COUNT: int = CANVAS_PRESETS[ACTIVE_CANVAS_PRESET][3]
+
 # === Couleurs ===
 BLACK: tuple = (0, 0, 0)
 WHITE: tuple = (255, 255, 255)
@@ -63,6 +98,13 @@ MAP_OFFSET_Y: int = 64
 REPO_ROOT: str = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 GFX_DIR: str = os.path.join(REPO_ROOT, "data", "gfx")
 SFX_DIR: str = os.path.join(REPO_ROOT, "data", "sfx")
+
+# === Audio defaults ===
+# When True, background music begins on game boot. When False (default),
+# the player must press the music button to start audio. Read once in
+# Game.__init__ via AudioManager.play_music(). Per docs/PYTHON_STYLE.md,
+# this is a real settings constant rather than an environment variable.
+MUSIC_AUTOSTART: bool = False
 TILES_PATH: str = os.path.join(GFX_DIR, "AmigaTiles1.PNG")
 SPRITES_PATH: str = os.path.join(GFX_DIR, "AmigaSprites1.PNG")
 
@@ -268,6 +310,9 @@ BUTTON_TOOLTIPS: dict = {
     'SW':             'Scroll viewport south-west',
     'W':              'Scroll viewport west',
     'NW':             'Scroll viewport north-west',
+    '_sleep':         'Sleep: pause / resume the simulation',
+    '_music':         'Music: toggle background music on / off',
+    '_fx':            'FX: toggle sound effects on / off',
 }
 
 #============================================

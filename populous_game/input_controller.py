@@ -4,6 +4,9 @@ import pygame
 import time
 import populous_game.powers as powers
 import populous_game.settings as settings
+import populous_game.selection as selection_module
+import populous_game.peep_state as peep_state
+import populous_game.faction as faction
 
 
 class InputController:
@@ -17,6 +20,14 @@ class InputController:
 		# the cursor at DRAG_PAINT_INTERVAL pacing.
 		self._drag_paint_button: int | None = None
 		self._drag_paint_last_time: float = 0.0
+		# Cursor indices for cycling find-buttons. Each remembers the
+		# peep index of the last hit so a repeat click steps to the next.
+		self._find_battle_cursor: int = -1
+		self._find_knight_cursor: int = -1
+		# Transient tooltip queue surfaced by find/go buttons when there
+		# is no valid target. The renderer can read this list; tests can
+		# assert it grew. Bounded length so old messages get evicted.
+		self.tooltip_messages: list = []
 
 	def _handle_ui_click(self, action, held=False):
 		"""Handle a UI button click (compass, powers)."""
@@ -46,14 +57,158 @@ class InputController:
 		elif action == '_do_swamp':
 			self.game.mode_manager.pending_power = 'swamp'
 		elif action == '_do_knight':
-			# Knight doesn't need a target; activate immediately
-			self.game.power_manager.activate('knight', None)
+			# Knight doesn't need a target; activate immediately. On
+			# failure (insufficient mana, no candidate), surface a
+			# tooltip so the click is never a silent no-op.
+			result = self.game.power_manager.activate('knight', None)
+			if not result.success:
+				self._queue_tooltip(result.message or 'Knight unavailable')
 		elif action == '_raise_terrain':
 			self.game.mode_manager.pending_power = None
-		# Stub remaining commands for future implementation
-		elif action in ['_find_battle', '_find_shield', '_find_papal', '_find_knight',
-			'_go_papal', '_go_build', '_go_assemble', '_go_fight', '_battle_over']:
-			pass  # Stubbed for M7
+		elif action == '_sleep':
+			self._handle_sleep_button()
+		elif action == '_music':
+			self.game.audio_manager.toggle_music()
+		elif action == '_fx':
+			self.game.audio_manager.toggle_sfx_mute()
+		elif action == '_find_battle':
+			self._handle_find_battle()
+		elif action == '_find_papal':
+			self._handle_find_papal(prefer_leader=True)
+		elif action == '_find_knight':
+			self._handle_find_knight()
+		elif action == '_go_papal':
+			self._handle_go_papal()
+		elif action == '_go_build':
+			self._handle_go_build()
+		elif action == '_go_assemble':
+			self._handle_go_assemble()
+		elif action == '_go_fight':
+			self._handle_go_fight()
+
+	#============================================
+	# Sleep button: toggle simulation pause.
+	#============================================
+
+	def _handle_sleep_button(self):
+		"""Toggle pause via the existing PLAYING<->PAUSED transitions."""
+		st = self.game.app_state
+		if st.is_playing():
+			st.transition_to(st.PAUSED)
+		elif st.is_paused():
+			st.transition_to(st.PLAYING)
+		# In MENU / GAMEOVER, the sleep button is a no-op.
+
+	#============================================
+	# Find buttons: jump the camera onto a target. No-target -> tooltip.
+	#============================================
+
+	def _queue_tooltip(self, message: str) -> None:
+		"""Append a transient user-facing message and play ui_click."""
+		self.tooltip_messages.append((message, time.time()))
+		# Cap the queue so it does not grow unbounded.
+		if len(self.tooltip_messages) > 8:
+			self.tooltip_messages = self.tooltip_messages[-8:]
+		self.game.audio_manager.play_sfx('ui_click')
+
+	def _handle_find_battle(self):
+		"""Cycle camera through peeps in FIGHT state."""
+		result = selection_module.find_next_battle(self.game, after_index=self._find_battle_cursor)
+		if result is None:
+			self._queue_tooltip('No active battle')
+			return
+		idx, r, c = result
+		self._find_battle_cursor = idx
+		self.game.camera.center_on(r, c)
+
+	def _handle_find_papal(self, prefer_leader: bool = True):
+		"""Jump camera to the papal target (leader if any, else magnet)."""
+		coord = selection_module.find_papal_target(self.game, prefer_leader=prefer_leader)
+		if coord is None:
+			self._queue_tooltip('No papal target')
+			return
+		r, c = coord
+		self.game.camera.center_on(r, c)
+
+	def _handle_find_knight(self):
+		"""Cycle camera through player knights."""
+		result = selection_module.find_next_knight(self.game, after_index=self._find_knight_cursor)
+		if result is None:
+			self._queue_tooltip('No knight')
+			return
+		idx, r, c = result
+		self._find_knight_cursor = idx
+		self.game.camera.center_on(r, c)
+
+	#============================================
+	# Go buttons: bulk peep behavior orders. Existing transitions only.
+	#============================================
+
+	def _player_peeps(self):
+		"""Iterate live player peeps (helper for the bulk go-handlers)."""
+		for p in self.game.peeps:
+			if p.dead or p.state == peep_state.PeepState.DEAD:
+				continue
+			if p.faction_id != faction.Faction.PLAYER:
+				continue
+			yield p
+
+	def _try_transition(self, p, new_state: str) -> bool:
+		"""Try a peep state transition; return True iff it fired."""
+		allowed = p._ALLOWED_TRANSITIONS.get(p.state, set())
+		if new_state in allowed:
+			p.transition(new_state)
+			return True
+		return False
+
+	def _handle_go_papal(self):
+		"""Walkers march toward the papal magnet, where the matrix permits."""
+		coord = self.game.mode_manager.papal_position
+		if coord is None:
+			self._queue_tooltip('No papal target')
+			return
+		pr, pc = coord
+		moved = 0
+		for p in self._player_peeps():
+			p.target_x = float(pc)
+			p.target_y = float(pr)
+			if self._try_transition(p, peep_state.PeepState.MARCH):
+				moved += 1
+		if moved == 0:
+			self._queue_tooltip('No peep can march now')
+
+	def _handle_go_build(self):
+		"""Walkers seek flat land to build, where the matrix permits."""
+		moved = 0
+		for p in self._player_peeps():
+			if self._try_transition(p, peep_state.PeepState.SEEK_FLAT):
+				moved += 1
+		if moved == 0:
+			self._queue_tooltip('No peep can settle now')
+
+	def _handle_go_assemble(self):
+		"""Walkers join forces (gather together), where the matrix permits."""
+		moved = 0
+		for p in self._player_peeps():
+			if self._try_transition(p, peep_state.PeepState.JOIN_FORCES):
+				moved += 1
+		if moved == 0:
+			self._queue_tooltip('No peep can gather now')
+
+	def _handle_go_fight(self):
+		"""Walkers march to the nearest enemy, where the matrix permits."""
+		moved = 0
+		for p in self._player_peeps():
+			target = selection_module.find_nearest_enemy(self.game, int(p.y), int(p.x))
+			if target is None:
+				continue
+			tr, tc = target
+			p.target_x = float(tc)
+			p.target_y = float(tr)
+			if self._try_transition(p, peep_state.PeepState.MARCH):
+				moved += 1
+		if moved == 0:
+			self._queue_tooltip('No enemy in range')
 
 	def poll(self) -> bool:
 		"""Poll input events. Return False if user requested quit."""
@@ -75,12 +230,11 @@ class InputController:
 				# Handle state machine transitions
 				if self.game.app_state.is_menu():
 					if event.key == pygame.K_RETURN or event.key == pygame.K_SPACE:
-						# Start new game: raise the whole map above water before
-						# spawning so peeps have land to walk on. Without this
-						# the default all-zeros heightmap leaves the viewport
-						# entirely under water.
+						# Start new game: keep the randomized mixed-terrain
+						# heightmap as generated. Spawn falls back to the
+						# nearest land corner via BFS when the random pick
+						# is water (see game.spawn_initial_peeps).
 						self.game.app_state.transition_to(self.game.app_state.PLAYING)
-						self.game.game_map.set_all_altitude(3)
 						self.game.spawn_initial_peeps(10)
 						self.game.spawn_enemy_peeps(10)
 						return True
@@ -188,6 +342,15 @@ class InputController:
 				elif hasattr(event, 'unicode') and event.unicode == '§':
 					self.game.show_debug = not self.game.show_debug
 			elif event.type == pygame.MOUSEBUTTONDOWN:
+				# Menu state: any left click starts the game. Mirror the
+				# Enter / Space behavior in the keydown branch above so
+				# users can click anywhere on the start page to begin.
+				if self.game.app_state.is_menu():
+					if event.button == 1:
+						self.game.app_state.transition_to(self.game.app_state.PLAYING)
+						self.game.spawn_initial_peeps(10)
+						self.game.spawn_enemy_peeps(10)
+					return True
 				# Use event.pos (the position the user actually clicked at)
 				# rather than pygame.mouse.get_pos(). This lets headless
 				# scripted tests post real click positions and avoids a
@@ -196,13 +359,22 @@ class InputController:
 				mx, my = event.pos
 				mx //= self.game.display_scale
 				my //= self.game.display_scale
+				# (mx, my) are now in INTERNAL canvas pixel space
+				# (HUD_SCALE-multiplied). UI pieces -- minimap, ui_panel
+				# buttons, ui_panel.select_at -- read 320x200 logical
+				# coords, so build a logical copy by dividing by HUD_SCALE.
+				# Terrain math (view_rect, screen_to_nearest_corner) reads
+				# canvas-space directly because terrain.world_to_screen
+				# now operates in canvas pixels.
+				logical_mx = mx // settings.HUD_SCALE
+				logical_my = my // settings.HUD_SCALE
 				# Check interaction minimap (if clicked on, no other action)
-				if event.button == 1 and self.game.minimap.handle_click(mx, my, self.game.camera):
+				if event.button == 1 and self.game.minimap.handle_click(logical_mx, logical_my, self.game.camera):
 					continue
 				# Check clicks on UI (compass and powers)
 				ui_clicked = False
 				if event.button == 1:
-					action = self.game.ui_panel.hit_test_button(mx, my)
+					action = self.game.ui_panel.hit_test_button(logical_mx, logical_my)
 					if action is not None:
 						self._handle_ui_click(action, held=True)
 						ui_clicked = True
@@ -211,7 +383,7 @@ class InputController:
 				# Shield mode: left-click on entity = apply coat-of-arms
 				if self.game.mode_manager.shield_mode:
 					if event.button == 1:
-						entity, kind = self.game.ui_panel.select_at(mx, my, self.game.peeps, self.game.game_map.houses, self.game.camera, self.game.game_map)
+						entity, kind = self.game.ui_panel.select_at(logical_mx, logical_my, self.game.peeps, self.game.game_map.houses, self.game.camera, self.game.game_map)
 						if entity is not None:
 							self.game.selection.who = entity
 							self.game.selection.kind = kind
@@ -333,7 +505,11 @@ class InputController:
 		mx, my = pygame.mouse.get_pos()
 		mx //= self.game.display_scale
 		my //= self.game.display_scale
-		if not self.game.minimap.rect.collidepoint(mx, my):
+		# Minimap rect lives in 320x200 logical space; convert canvas
+		# coords down by HUD_SCALE before hit-testing.
+		logical_mx = mx // settings.HUD_SCALE
+		logical_my = my // settings.HUD_SCALE
+		if not self.game.minimap.rect.collidepoint(logical_mx, logical_my):
 			return
 		step = settings.MINIMAP_ZOOM_STEP * float(event.y)
 		self.game.minimap.set_zoom(self.game.minimap.zoom + step)

@@ -1,6 +1,7 @@
 """Tests for enemy peep spawning (M5 Wave 3, Patch 1)."""
 
 import random
+import pytest
 import populous_game.game as game_module
 import populous_game.faction as faction
 import populous_game.settings as settings
@@ -70,14 +71,18 @@ class TestEnemySpawn:
 		assert player_count == 5
 		assert enemy_count == 5
 
-	def test_no_spawn_in_water(self):
-		"""Peeps do not spawn on water (altitude == 0)."""
+	def test_no_land_raises(self):
+		"""Spawn raises a descriptive RuntimeError when no land exists.
+
+		Per M1 WP-M1-A: the spawn API does not silently under-produce.
+		Either every requested peep gets a land tile via BFS fallback,
+		or the call raises so the bug is loud instead of hidden.
+		"""
 		game = game_module.Game()
-		# Set entire map to water first
 		game.game_map.set_all_altitude(0)
-		# Now spawn attempts should not add peeps
-		game.spawn_initial_peeps(10)
-		assert len(game.peeps) == 0
+		game.peeps.clear()
+		with pytest.raises(RuntimeError, match="no land tile"):
+			game.spawn_initial_peeps(10)
 
 	def test_spawn_with_valid_altitude(self):
 		"""Peeps spawn only where altitude > 0."""

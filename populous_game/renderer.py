@@ -76,7 +76,10 @@ class Renderer:
 	def _draw_gameplay(self) -> None:
 		"""Draw the standard gameplay frame (terrain, entities, UI)."""
 		self.game.internal_surface.fill(settings.BLACK)
-		self.game.internal_surface.blit(self.game.ui_image, (0, 0))
+		# Use the cached HUD blit surface (presized to the active canvas
+		# in Game.__init__) so non-classic presets cover the full
+		# internal canvas. At classic this surface IS self.ui_image.
+		self.game.internal_surface.blit(self.game.hud_blit_surface, (0, 0))
 
 		# Display clicked button sprite if needed
 		if self.game.last_button_click is not None:
@@ -147,12 +150,17 @@ class Renderer:
 		# Translate from physical screen coords to internal-surface coords
 		mx_int = mx // self.game.display_scale
 		my_int = my // self.game.display_scale
-		action = self.game.ui_panel.hit_test_button(mx_int, my_int)
+		# ui_panel reads 320x200 logical coords; divide by HUD_SCALE so
+		# hit-testing works at any preset. At classic (HUD_SCALE == 1)
+		# this is a no-op and the panel position is identical.
+		mx_logical = mx_int // settings.HUD_SCALE
+		my_logical = my_int // settings.HUD_SCALE
+		action = self.game.ui_panel.hit_test_button(mx_logical, my_logical)
 		tooltip = self.game.ui_panel.tooltip_for(action)
 		if tooltip:
 			self._draw_text_panel(mx_int, my_int, [tooltip])
 			return
-		info = self.game.ui_panel.hover_info_at(mx_int, my_int, self.game)
+		info = self.game.ui_panel.hover_info_at(mx_logical, my_logical, self.game)
 		if info is None:
 			return
 		lines = self._format_hover_info(info)

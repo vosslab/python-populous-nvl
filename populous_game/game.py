@@ -32,7 +32,7 @@ class Game:
 	def player_faction_id(self) -> int:
 		"""Return the player faction ID."""
 		return faction.Faction.PLAYER
-	def __init__(self):
+	def __init__(self, display_scale: int | None = None, seed: int | None = None):
 		# Load keymap (user config or defaults)
 		self.keymap = keymap.load_keymap()
 
@@ -46,6 +46,10 @@ class Game:
 		self.audio_manager = audio.AudioManager()
 		self.audio_manager.init()
 		audio.register_default_sounds(self.audio_manager)
+		# Optionally auto-start background music. Default False so a fresh
+		# boot is silent; the user can flip this via settings.MUSIC_AUTOSTART.
+		if settings.MUSIC_AUTOSTART:
+			self.audio_manager.play_music()
 
 		pygame.init()
 		self.clock = pygame.time.Clock()
@@ -55,8 +59,22 @@ class Game:
 		ui_path = os.path.join(settings.GFX_DIR, "AmigaUI.png")
 		ui_raw = pygame.image.load(ui_path)
 		# Initialisation des zones interactives de l'interface ---
-		self.base_size = ui_raw.get_size()
-		self.display_scale = 3
+		# The internal canvas size is driven by the active CANVAS_PRESET
+		# (settings.INTERNAL_WIDTH/HEIGHT), not by the AmigaUI sprite
+		# dimensions. At classic preset these match the sprite (320x200);
+		# at remaster/large the canvas is bigger and the HUD sprite is
+		# upscaled at blit time below.
+		self.base_size = (settings.INTERNAL_WIDTH, settings.INTERNAL_HEIGHT)
+		# Discard `ui_raw` after sizing -- assets.get_ui_image() returns
+		# the canonical image used for blitting.
+		del ui_raw
+		# CLI-supplied display_scale overrides the legacy default of 3
+		# (which produced a 960x600 window at classic preset). The default
+		# behavior is preserved when no override is given.
+		if display_scale is None:
+			self.display_scale = 3
+		else:
+			self.display_scale = int(display_scale)
 
 		# Apply resolution scale from settings
 		final_scale = self.display_scale * settings.RESOLUTION_SCALE
@@ -68,18 +86,38 @@ class Game:
 		# Load all assets now that display is set up
 		assets.load_all()
 		self.ui_image = assets.get_ui_image()
+		# Cache a presized HUD blit surface once so the per-frame
+		# renderer reuses it without paying a transform.scale cost. When
+		# HUD_SCALE > 1 the 320x200 AmigaUI sprite is upscaled to the
+		# internal canvas size; at HUD_SCALE == 1 the cached surface is
+		# `self.ui_image` itself, so behavior at classic preset is
+		# byte-identical to pre-patch.
+		if settings.HUD_SCALE > 1:
+			self.hud_blit_surface = pygame.transform.scale(
+				self.ui_image,
+				(settings.INTERNAL_WIDTH, settings.INTERNAL_HEIGHT),
+			)
+		else:
+			self.hud_blit_surface = self.ui_image
 		self.internal_surface = pygame.Surface(self.base_size)
-		self.internal_surface.blit(self.ui_image, (0, 0))
+		self.internal_surface.blit(self.hud_blit_surface, (0, 0))
 
-		# Dimensions de la zone de render (plein écran à l'échelle 1)
-		self.view_rect = pygame.Rect(0, 0, self.ui_image.get_width(), self.ui_image.get_height())
+		# Dimensions de la zone de render (plein écran à l'échelle 1).
+		# The view rect spans the full internal canvas so terrain math
+		# stays consistent with the HUD blit above.
+		self.view_rect = pygame.Rect(0, 0, settings.INTERNAL_WIDTH, settings.INTERNAL_HEIGHT)
 
 		# Note: screen dimensions are determined by UI size, but we do not
 		# mutate module attributes. Each module reads settings.X directly.
 
 		self.camera = camera.Camera()
 		self.game_map = terrain.GameMap(settings.GRID_WIDTH, settings.GRID_HEIGHT)
-		self.game_map.randomize()
+		# Honor CLI seed override for deterministic terrain. None falls
+		# back to the wall-clock seeded path used by the existing run().
+		if seed is None:
+			self.game_map.randomize()
+		else:
+			self.game_map.randomize(seed=int(seed))
 		self.minimap = minimap.Minimap(0, 0) # Position de la minimap
 
 		# Get weapon sprites from asset registry
@@ -130,6 +168,10 @@ class Game:
 	def spawn_initial_peeps(self, count: int, faction_id: int = None) -> None:
 		"""Spawn initial peeps for a faction near top-left of the grid.
 
+		If the random pick is water, fall back to the nearest land corner
+		via breadth-first search. Spawns the requested count; raises
+		RuntimeError if the map has no land at all.
+
 		Args:
 			count: Number of peeps to spawn.
 			faction_id: Faction ID (defaults to Faction.PLAYER).
@@ -139,21 +181,34 @@ class Game:
 		for _ in range(count):
 			r = random.randint(0, settings.GRID_HEIGHT - 1)
 			c = random.randint(0, settings.GRID_WIDTH - 1)
-			# Do not spawn in water
-			if self.game_map.get_corner_altitude(r, c) > 0:
-				self.peeps.append(peep.Peep(r, c, self.game_map, faction_id=faction_id))
+			# If pick is water, find the nearest land corner.
+			if self.game_map.get_corner_altitude(r, c) <= 0:
+				land = self.game_map.find_nearest_land(r, c)
+				if land is None:
+					raise RuntimeError(
+						"Cannot spawn peep: no land tile exists on the map"
+					)
+				r, c = land
+			self.peeps.append(peep.Peep(r, c, self.game_map, faction_id=faction_id))
 
 	def spawn_enemy_peeps(self, count: int = 5) -> None:
 		"""Spawn enemy peeps near bottom-right of the grid.
 
-		Per M5 Wave 3: enemies spawn opposite corner from player.
+		Per M5 Wave 3: enemies spawn opposite corner from player. Falls
+		back to nearest land via BFS if the random pick is water; raises
+		RuntimeError if the map has no land at all.
 		"""
 		for _ in range(count):
 			r = random.randint(settings.GRID_HEIGHT // 2, settings.GRID_HEIGHT - 1)
 			c = random.randint(settings.GRID_WIDTH // 2, settings.GRID_WIDTH - 1)
-			# Do not spawn in water
-			if self.game_map.get_corner_altitude(r, c) > 0:
-				self.peeps.append(peep.Peep(r, c, self.game_map, faction_id=faction.Faction.ENEMY))
+			if self.game_map.get_corner_altitude(r, c) <= 0:
+				land = self.game_map.find_nearest_land(r, c)
+				if land is None:
+					raise RuntimeError(
+						"Cannot spawn enemy peep: no land tile exists on the map"
+					)
+				r, c = land
+			self.peeps.append(peep.Peep(r, c, self.game_map, faction_id=faction.Faction.ENEMY))
 
 	def _check_game_over(self) -> None:
 		"""Check win/lose conditions and transition to GAMEOVER state if met.

@@ -38,6 +38,12 @@ class AudioManager:
 		self.silent = True
 		self._sfx = {}
 		self._music_path = None
+		# UI-driven audio toggles. is_music_playing reflects whether the
+		# music button has been turned on; is_sfx_muted gates play_sfx().
+		# Both default off so a fresh boot is silent unless settings.
+		# MUSIC_AUTOSTART asks otherwise (Game wires that up at boot).
+		self.is_music_playing = False
+		self.is_sfx_muted = False
 
 	def init(self) -> bool:
 		"""Initialize pygame.mixer. Returns False if mixer init fails (silent mode).
@@ -143,8 +149,8 @@ class AudioManager:
 		self._music_path = path
 
 	def play_sfx(self, name: str) -> None:
-		"""Play a sound effect by name. No-op if silent or name not loaded."""
-		if self.silent or name not in self._sfx:
+		"""Play a sound effect by name. No-op if silent, muted, or name not loaded."""
+		if self.silent or self.is_sfx_muted or name not in self._sfx:
 			return
 		try:
 			self._sfx[name].play()
@@ -153,24 +159,56 @@ class AudioManager:
 			pass
 
 	def play_music(self, loop: bool = True) -> None:
-		"""Play background music. No-op if silent or no music path set."""
+		"""Play background music. No-op if silent or no music path set.
+
+		Sets is_music_playing=True so the UI music button reflects state.
+		"""
 		if self.silent or self._music_path is None:
 			return
 		try:
 			pygame.mixer.music.load(self._music_path)
 			pygame.mixer.music.play(-1 if loop else 0)
+			self.is_music_playing = True
 		except Exception:
 			# Music playback failed; silent mode absorbs it.
 			pass
 
 	def stop_music(self) -> None:
-		"""Stop background music. No-op if silent."""
+		"""Stop background music. Always clears is_music_playing."""
+		# Clear the UI flag even when silent, so toggle behavior works in
+		# headless tests where mixer init is a no-op.
+		self.is_music_playing = False
 		if self.silent:
 			return
 		try:
 			pygame.mixer.music.stop()
 		except Exception:
 			pass
+
+	def toggle_music(self) -> bool:
+		"""Toggle background music on/off. Returns the new is_music_playing.
+
+		Wired to the _music UI button. In silent mode the flag still
+		flips so tests can assert toggle behavior without a real mixer.
+		"""
+		if self.is_music_playing:
+			self.stop_music()
+		else:
+			# When silent, play_music returns early without setting the
+			# flag; flip it here so toggle observably moves state.
+			if self.silent:
+				self.is_music_playing = True
+			else:
+				self.play_music()
+		return self.is_music_playing
+
+	def toggle_sfx_mute(self) -> bool:
+		"""Toggle SFX mute on/off. Returns the new is_sfx_muted.
+
+		Wired to the _fx UI button. play_sfx() returns early when muted.
+		"""
+		self.is_sfx_muted = not self.is_sfx_muted
+		return self.is_sfx_muted
 
 	def set_volume(self, volume: float) -> None:
 		"""Set master volume (0.0 to 1.0). Clamps to valid range."""

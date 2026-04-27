@@ -132,8 +132,8 @@ def test_f10_triggers_lose():
 		pygame.quit()
 
 
-def test_menu_state_ignores_gameplay_input():
-	"""In MENU state, gameplay input (raise terrain) is ignored."""
+def test_menu_left_click_starts_game():
+	"""In MENU state, a left-click starts the game (Bug 1 fix)."""
 	pygame.init()
 	pygame.display.set_mode((1, 1))
 
@@ -141,13 +141,13 @@ def test_menu_state_ignores_gameplay_input():
 		game = Game()
 		assert game.app_state.is_menu()
 
-		# Simulate left-click on terrain (should be ignored)
+		# Simulate left-click on the menu screen.
 		click_event = pygame.event.Event(pygame.MOUSEBUTTONDOWN, {'button': 1, 'pos': (400, 300)})
 		with mock.patch('pygame.event.get', return_value=[click_event]):
 			with mock.patch('pygame.mouse.get_pos', return_value=(400, 300)):
 				result = game.input_controller.poll()
-		# Should remain in MENU and return True (no quit)
-		assert game.app_state.is_menu()
+		# Click should transition to PLAYING and not request quit.
+		assert game.app_state.is_playing()
 		assert result is True
 	finally:
 		pygame.quit()

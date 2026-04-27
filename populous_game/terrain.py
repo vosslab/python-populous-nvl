@@ -1,5 +1,6 @@
 import pygame
 import random
+import populous_game.layout as layout
 import populous_game.settings as settings
 
 
@@ -77,18 +78,27 @@ class GameMap:
     def world_to_screen(self, r, c, altitude, cam_r=0, cam_c=0):
         local_r = r - cam_r
         local_c = c - cam_c
-        sx = settings.MAP_OFFSET_X + (local_c - local_r) * settings.TILE_HALF_W
+        # Read terrain origin via layout helper so the math lives in
+        # canvas-pixel space (HUD-scaled). At classic preset this is
+        # identical to (settings.MAP_OFFSET_X, settings.MAP_OFFSET_Y).
+        origin_x, origin_y = layout.terrain_origin()
+        sx = origin_x + (local_c - local_r) * settings.TILE_HALF_W
         elev = altitude * settings.TILE_HALF_H  # Incrément strict de 8 pixels par niveau
-        sy = settings.MAP_OFFSET_Y + (local_c + local_r) * settings.TILE_HALF_H - elev
+        sy = origin_y + (local_c + local_r) * settings.TILE_HALF_H - elev
         return int(sx), int(sy)
 
     def screen_to_nearest_corner(self, sx, sy, cam_r=0, cam_c=0):
         best_r, best_c = 0, 0
         min_dist = float("inf")
+        # Search window must extend past the visible viewport to catch
+        # corners near the bottom-right edge. At classic preset, n=8 and
+        # the window is +12 (matches pre-M4 behavior). At remaster (n=12)
+        # and large (n=16) the window grows with the viewport.
+        n = settings.VISIBLE_TILE_COUNT
         start_r = max(0, int(cam_r) - 2)
-        end_r = min(self.grid_height + 1, int(cam_r) + 12)
+        end_r = min(self.grid_height + 1, int(cam_r) + n + 4)
         start_c = max(0, int(cam_c) - 2)
-        end_c = min(self.grid_width + 1, int(cam_c) + 12)
+        end_c = min(self.grid_width + 1, int(cam_c) + n + 4)
 
         for r in range(start_r, end_r):
             for c in range(start_c, end_c):
@@ -223,8 +233,11 @@ class GameMap:
         surface.blit(tile_surf, (blit_x, blit_y))
 
     def screen_to_grid(self, sx, sy, cam_r=0, cam_c=0):
-        X = sx - settings.MAP_OFFSET_X
-        Y = sy - settings.MAP_OFFSET_Y
+        # Inverse of world_to_screen; route the origin through the layout
+        # helper so canvas-pixel math stays consistent at every preset.
+        origin_x, origin_y = layout.terrain_origin()
+        X = sx - origin_x
+        Y = sy - origin_y
 
         U = X / settings.TILE_HALF_W
         V = Y / settings.TILE_HALF_H
@@ -236,15 +249,19 @@ class GameMap:
     def get_visible_bounds(self, cam_r, cam_c):
         start_r = int(cam_r)
         start_c = int(cam_c)
-        end_r = min(self.grid_height, start_r + 8)
-        end_c = min(self.grid_width, start_c + 8)
+        # Viewport extent scales with the active canvas preset's VISIBLE_TILE_COUNT
+        n = settings.VISIBLE_TILE_COUNT
+        end_r = min(self.grid_height, start_r + n)
+        end_c = min(self.grid_width, start_c + n)
         return start_r, end_r, start_c, end_c
 
     def draw(self, surface, cam_r=0, cam_c=0):
         start_r = int(cam_r)
         start_c = int(cam_c)
-        end_r = min(self.grid_height, start_r + 8)
-        end_c = min(self.grid_width, start_c + 8)
+        # Viewport extent scales with the active canvas preset's VISIBLE_TILE_COUNT
+        n = settings.VISIBLE_TILE_COUNT
+        end_r = min(self.grid_height, start_r + n)
+        end_c = min(self.grid_width, start_c + n)
 
         for r in range(start_r, end_r):
             for c in range(start_c, end_c):
@@ -282,8 +299,10 @@ class GameMap:
     def draw_houses(self, surface, cam_r=0, cam_c=0, show_debug=False, debug_font=None):
         start_r = int(cam_r)
         start_c = int(cam_c)
-        end_r = min(self.grid_height, start_r + 8)
-        end_c = min(self.grid_width, start_c + 8)
+        # Viewport extent scales with the active canvas preset's VISIBLE_TILE_COUNT
+        n = settings.VISIBLE_TILE_COUNT
+        end_r = min(self.grid_height, start_r + n)
+        end_c = min(self.grid_width, start_c + n)
 
         from populous_game.peeps import Peep
         peep_sprites = Peep.get_sprites()
@@ -363,22 +382,70 @@ class GameMap:
             for c in range(self.grid_width + 1):
                 self.corners[r][c] = value
 
-    def randomize(self, min_level=0, max_level=7):
-        self.corners[0][0] = random.randint(min_level, max_level)
+    def randomize(self, min_level=0, max_level=7, seed=None):
+        """Generate a mixed-altitude heightmap.
+
+        Args:
+            min_level: Minimum corner altitude. Default 0 (water).
+            max_level: Maximum corner altitude. Default 7.
+            seed: Optional integer seed for deterministic generation. Same
+                seed produces the same map. None uses the module-global
+                random state.
+        """
+        # Use a private rng instance so an explicit seed does not perturb
+        # the module-global random.random stream used elsewhere.
+        rng = random.Random(seed) if seed is not None else random
+        self.corners[0][0] = rng.randint(min_level, max_level)
         for c in range(1, self.grid_width + 1):
             prev = self.corners[0][c - 1]
-            self.corners[0][c] = max(min_level, min(max_level, prev + random.choice([-1, 0, 1])))
+            self.corners[0][c] = max(min_level, min(max_level, prev + rng.choice([-1, 0, 1])))
         for r in range(1, self.grid_height + 1):
             prev = self.corners[r - 1][0]
-            self.corners[r][0] = max(min_level, min(max_level, prev + random.choice([-1, 0, 1])))
+            self.corners[r][0] = max(min_level, min(max_level, prev + rng.choice([-1, 0, 1])))
             for c in range(1, self.grid_width + 1):
                 left = self.corners[r][c - 1]
                 up = self.corners[r - 1][c]
                 lo = max(min_level, left - 1, up - 1)
                 hi = min(max_level, left + 1, up + 1)
-                base = max(lo, min(hi, (left + up) // 2 + random.choice([-1, 0, 1])))
+                base = max(lo, min(hi, (left + up) // 2 + rng.choice([-1, 0, 1])))
                 self.corners[r][c] = base
         self._enforce_height_constraints()
+
+    def find_nearest_land(self, r, c):
+        """Breadth-first search for the nearest land corner from (r, c).
+
+        Returns (r2, c2) of the closest corner with altitude > 0, or None
+        if no land exists anywhere on the map. Used by peep spawning so
+        walkers do not require pre-flattened terrain.
+        """
+        # Already on land? Return the input coordinate.
+        if 0 <= r <= self.grid_height and 0 <= c <= self.grid_width:
+            if self.corners[r][c] > 0:
+                return (r, c)
+        # BFS over the corner grid; corners go 0..grid_height inclusive.
+        visited = set()
+        if 0 <= r <= self.grid_height and 0 <= c <= self.grid_width:
+            visited.add((r, c))
+            queue = [(r, c)]
+        else:
+            # Out-of-bounds start; treat as water at (0, 0) for BFS seeding.
+            visited.add((0, 0))
+            queue = [(0, 0)]
+        head = 0
+        while head < len(queue):
+            cr, cc = queue[head]
+            head += 1
+            for dr, dc in ((1, 0), (-1, 0), (0, 1), (0, -1)):
+                nr, nc = cr + dr, cc + dc
+                if (nr, nc) in visited:
+                    continue
+                if not (0 <= nr <= self.grid_height and 0 <= nc <= self.grid_width):
+                    continue
+                visited.add((nr, nc))
+                if self.corners[nr][nc] > 0:
+                    return (nr, nc)
+                queue.append((nr, nc))
+        return None
 
     def is_flat_and_buildable(self, r, c):
         if r < 0 or c < 0 or r >= self.grid_height or c >= self.grid_width:

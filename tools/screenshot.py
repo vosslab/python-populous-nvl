@@ -78,6 +78,12 @@ def parse_args():
 		'--script', dest='script_file', default=None,
 		help='YAML script of events and named captures (overrides -s/-t/-o defaults).'
 	)
+	parser.add_argument(
+		'--prefix', dest='prefix', default=None,
+		help='Prefix for capture output filenames in scripted mode '
+		'(default: as named in the YAML script). Useful when one '
+		'YAML script is reused for multiple test runs.'
+	)
 	args = parser.parse_args()
 	return args
 
@@ -99,8 +105,10 @@ def boot_game(state: str, player_count: int, enemy_count: int) -> game_module.Ga
 	if state == 'menu':
 		return game
 	if state == 'gameplay':
+		# Use the randomized mixed-terrain heightmap as generated; spawn
+		# falls back to the nearest land corner via BFS when the random
+		# pick is water (M1 WP-M1-A).
 		game.app_state.transition_to(game.app_state.PLAYING)
-		game.game_map.set_all_altitude(3)
 		game.spawn_initial_peeps(player_count)
 		if enemy_count > 0:
 			game.spawn_enemy_peeps(enemy_count)
@@ -174,8 +182,21 @@ def capture(game: game_module.Game, out_path: str) -> None:
 
 #============================================
 
-def run_scripted(script_path: str) -> None:
-	"""Drive the game via a YAML script with timed events and captures."""
+def run_scripted(script_path: str, prefix: str = None) -> None:
+	"""Drive the game via a YAML script with timed events and captures.
+
+	Args:
+		script_path: Path to a YAML script.
+		prefix: Optional capture-name prefix. When set, every named
+			capture writes to '<prefix>_<name>.png' instead of '<name>.png'.
+			Allows reusing one script across multiple test runs without
+			overwriting previous PNGs.
+
+	The script may declare a top-level `settle_frames` integer. After
+	each event, the runner advances that many additional frames before
+	taking any subsequent capture, so animations and AOEs can pass
+	through before the snapshot is saved.
+	"""
 	with open(script_path, 'r') as fh:
 		script = yaml.safe_load(fh)
 
@@ -183,6 +204,7 @@ def run_scripted(script_path: str) -> None:
 	ticks = int(script.get('ticks', 60))
 	player_count = int(script.get('players', 4))
 	enemy_count = int(script.get('enemies', 0))
+	settle_frames = int(script.get('settle_frames', 0))
 	events = script.get('events', []) or []
 	captures = script.get('captures', []) or []
 
@@ -198,12 +220,23 @@ def run_scripted(script_path: str) -> None:
 	dt = 1.0 / 60.0
 	for t in range(ticks + 1):
 		# Inject any events scheduled for this tick BEFORE the loop iteration
+		event_fired = False
 		for ev in events_by_tick.get(t, []):
 			post_event(ev)
+			event_fired = True
 		step_game(game, dt)
+		# When settle_frames > 0 and an event fired this tick, run
+		# additional frames before the upcoming capture so the rendered
+		# state reflects the post-event simulation, not the mid-event one.
+		if event_fired and settle_frames > 0:
+			for _ in range(settle_frames):
+				step_game(game, dt)
 		# Save any captures scheduled for this tick AFTER the iteration
 		for cap in captures_by_tick.get(t, []):
-			out_path = cap.get('path') or default_output_path(cap['name'])
+			name = cap['name']
+			if prefix:
+				name = f'{prefix}_{name}'
+			out_path = cap.get('path') or default_output_path(name)
 			capture(game, out_path)
 
 #============================================
@@ -213,7 +246,7 @@ def main() -> None:
 	args = parse_args()
 
 	if args.script_file:
-		run_scripted(args.script_file)
+		run_scripted(args.script_file, prefix=args.prefix)
 		return
 
 	out_path = args.output_file if args.output_file else default_output_path(args.state)

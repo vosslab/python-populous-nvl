@@ -27,7 +27,8 @@ class UIPanel:
 			'_do_papal':      {'c': (cx + dx*1, cy + dy*3), 'hw': hw, 'hh': hh},
 			'_do_shield':     {'c': (cx + dx*3, cy + dy*1), 'hw': hw, 'hh': hh},
 			'_find_battle':   {'c': (cx + dx*3, cy + dy*3), 'hw': hw, 'hh': hh},
-			'_find_shield':   {'c': (cx,        cy),        'hw': hw, 'hh': hh},
+			# _find_shield: removed in M2 per docs/active_plans/m2_button_gaps.md
+			# (no shield-bearer concept exists in the current peep code).
 			'_find_papal':    {'c': (cx + dx*4, cy + dy*2), 'hw': hw, 'hh': hh},
 			'_find_knight':   {'c': (cx + dx*5, cy + dy*3), 'hw': hw, 'hh': hh},
 			'W':              {'c': (cx - dx*2, cy),        'hw': hw, 'hh': hh},
@@ -42,7 +43,15 @@ class UIPanel:
 			'_go_build':      {'c': (cx - dx*2, cy + dy*2), 'hw': hw, 'hh': hh},
 			'_go_assemble':   {'c': (cx - dx*1, cy + dy*3), 'hw': hw, 'hh': hh},
 			'_go_fight':      {'c': (cx - dx*3, cy + dy*3), 'hw': hw, 'hh': hh},
-			'_battle_over':   {'c': (cx - dx*2, cy - dy*4), 'hw': hw, 'hh': hh},
+			# _battle_over: removed in M2 per docs/active_plans/m2_button_gaps.md
+			# (original icon meaning unconfirmed; no matching repo mechanic).
+			# Bottom-right HUD audio + sleep icons (320x200 logical coords).
+			# Geometry estimated from the AmigaUI.png sprite; the
+			# tools/draw_button_overlay.py debug script (M2 review) renders
+			# these rects on top of the HUD for visual confirmation.
+			'_fx':            {'c': (250, 189), 'hw': 10, 'hh': 6},
+			'_music':         {'c': (275, 189), 'hw': 10, 'hh': 6},
+			'_sleep':         {'c': (304, 189), 'hw': 10, 'hh': 6},
 		}
 
 	def hit_test_button(self, mx, my) -> str | None:

@@ -6,9 +6,10 @@ class Camera:
 		"""Initialize camera position at center of grid."""
 		self.move_timer = 0.0
 		# Position logique de la caméra en coordonnées de grille (r, c)
-		# Correspond au coin supérieur de la zone 8x8 affichée
-		self.r = float(settings.GRID_HEIGHT // 2 - 4)
-		self.c = float(settings.GRID_WIDTH // 2 - 4)
+		# Correspond au coin supérieur de la zone NxN affichée (N = VISIBLE_TILE_COUNT)
+		half = settings.VISIBLE_TILE_COUNT // 2
+		self.r = float(settings.GRID_HEIGHT // 2 - half)
+		self.c = float(settings.GRID_WIDTH // 2 - half)
 
 	def move_direction(self, direction: str) -> None:
 		"""Move camera in the specified direction string."""
@@ -31,11 +32,27 @@ class Camera:
 		"""Move camera by the given delta row and delta column."""
 		self.r += float(dr)
 		self.c += float(dc)
-		# Limites strictes basées sur la grille
-		max_r = float(settings.GRID_HEIGHT - 8)
-		max_c = float(settings.GRID_WIDTH - 8)
+		# Limites strictes basées sur la grille; la viewport NxN ne sort jamais du grid
+		n = settings.VISIBLE_TILE_COUNT
+		max_r = float(settings.GRID_HEIGHT - n)
+		max_c = float(settings.GRID_WIDTH - n)
 		self.r = max(0.0, min(self.r, max_r))
 		self.c = max(0.0, min(self.c, max_c))
+
+	def center_on(self, r, c) -> None:
+		"""Center the NxN viewport on the given grid coordinate.
+
+		N is settings.VISIBLE_TILE_COUNT. The viewport top-left moves to
+		(r - N//2, c - N//2), clamped to legal bounds. Used by the
+		_find_* buttons to jump the camera onto a battle, papal magnet,
+		or knight.
+		"""
+		n = settings.VISIBLE_TILE_COUNT
+		half = float(n // 2)
+		max_r = float(settings.GRID_HEIGHT - n)
+		max_c = float(settings.GRID_WIDTH - n)
+		self.r = max(0.0, min(float(r) - half, max_r))
+		self.c = max(0.0, min(float(c) - half, max_c))
 
 	def update(self, dt: float) -> None:
 		"""Update camera position based on keyboard input."""
