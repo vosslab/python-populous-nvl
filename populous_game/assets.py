@@ -3,6 +3,7 @@
 import os
 import pygame
 import populous_game.settings as settings
+import populous_game.iso_hole as iso_hole
 
 
 # Module-level cache of loaded assets
@@ -17,10 +18,19 @@ def load_all() -> None:
 	"""Load all asset sprites and textures. Call once after pygame.display.set_mode()."""
 	global _WEAPON_SPRITES, _WEAPON_SPRITE_INDICES, _BUTTON_SPRITES, _BUTTON_SPRITE_INDICES, _UI_IMAGE
 
-	# Load UI image for screen sizing
+	# Load UI image for screen sizing. Convert to SRCALPHA so the iso-
+	# diamond hole in the center of the sprite (the black region where
+	# the original Amiga rendered terrain) can be punched transparent
+	# below. The remaster draws terrain UNDER the HUD, so the hole must
+	# expose the canvas; without this step the HUD blits opaque black
+	# over the entire diamond.
 	ui_path = os.path.join(settings.GFX_DIR, "AmigaUI.png")
 	ui_raw = pygame.image.load(ui_path)
 	_UI_IMAGE = ui_raw.convert_alpha()
+	# Punch the iso-diamond hole transparent. Mutates _UI_IMAGE in place.
+	# Restricted to the largest 4-connected black region so the small
+	# minimap pane (also black) keeps its opacity.
+	iso_hole.flood_fill_iso_hole(_UI_IMAGE)
 
 	# Load weapon sprites
 	_WEAPON_SPRITES = []

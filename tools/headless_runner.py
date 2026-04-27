@@ -91,12 +91,11 @@ def button_center_px(game: game_module.Game, action: str) -> tuple:
 def tile_center_px(game: game_module.Game, r: int, c: int) -> tuple:
 	"""Return the OS-window pixel center for grid tile (r, c).
 
-	Goes through `game_map.world_to_screen` so the helper stays valid
-	when the camera, MAP_OFFSET_X/Y, or canvas preset change.
+	Routes through the game's ViewportTransform so the helper stays
+	valid when the camera, map well rect, or canvas preset change.
 	"""
-	cam_r, cam_c = game.camera.r, game.camera.c
 	a = game.game_map.get_corner_altitude(r, c)
-	sx, sy = game.game_map.world_to_screen(r, c, a, cam_r, cam_c)
+	sx, sy = game.viewport_transform.world_to_screen(r, c, a)
 	# world_to_screen returns the corner top point; shift to tile center.
 	tx = sx
 	ty = sy + settings.TILE_HALF_H

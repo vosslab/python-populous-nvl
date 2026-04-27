@@ -41,8 +41,11 @@ def _boot(seed):
 
 
 def _advance(game, frames=30, dt=1.0/60.0):
+    # Pass the game's viewport transform so the peep's facing
+    # computation routes its iso projection through the transform
+    # rather than falling back to settings literals.
     for p in list(game.peeps):
-        p.update(dt)
+        p.update(dt, game.viewport_transform)
 
 
 def test_music_toggle_does_not_change_digest():

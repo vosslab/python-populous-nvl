@@ -8,9 +8,11 @@ Run the game from a shell at the repo root:
 source source_me.sh && python3 populous.py
 ```
 
-The default presentation is the 320x200 `classic` preset. The
-`remaster` (640x400) and `large` (1280x800) presets are still selectable
-via the `--preset` CLI flag described below.
+The default presentation is the 640x400 `remaster` preset. The
+`classic` (320x200) and `large` (1280x800) presets are still selectable
+via the `--preset` CLI flag described below. On smaller monitors,
+combine `--preset remaster` (or `classic`) with `--fit-screen` to let
+the launcher pick the largest window scale that fits.
 
 ## Command-line options
 
@@ -21,13 +23,14 @@ must not change simulation outcomes (parity is enforced by
 
 | Flag | Description |
 | --- | --- |
-| `-p, --preset {classic,remaster,large}` | Select a named canvas preset. |
+| `-p, --preset {classic,remaster,large}` | Select a named canvas preset. Default is `remaster`. |
 | `-s, --size WIDTHxHEIGHT` | Override internal canvas size (e.g. `--size 640x400`). Does not change `HUD_SCALE` or `VISIBLE_TILE_COUNT`; those track `--preset`. |
-| `-w, --window-scale N` | OS window scale multiplier (default 3 -> 960x600 at classic). |
-| `-f, --fit-screen` | Pick the largest `--window-scale` that fits the current monitor. |
+| `-w, --window-scale N` | OS window scale multiplier (default 3 -> 1920x1200 at remaster, 960x600 at classic). |
+| `-f, --fit-screen` | Pick the largest `--window-scale` that fits the current monitor. Recommended on small displays so the remaster default does not exceed screen height. |
 | `-t, --visible-tiles N` | Override `settings.VISIBLE_TILE_COUNT`. |
 | `-S, --seed N` | Deterministic terrain seed for `GameMap.randomize`. The only flag that affects simulation. |
 | `-o, --screenshot PATH` | Capture the first rendered frame to PATH (PNG) and exit. |
+| `-d, --debug-layout` | Overlay layout diagnostic graphics (HUD rect, map-well rect, terrain anchor, tile centers, HUD button hit-boxes). Use to verify `ViewportTransform` placement. |
 
 Examples:
 
@@ -47,7 +50,7 @@ Three canvas presets ship with the remaster, declared in
 | Preset    | Internal size | HUD scale | Visible tiles |
 | ---       | ---           | ---       | ---           |
 | classic   | 320 x 200     | 1         | 8             |
-| remaster  | 640 x 400     | 2         | 12            |
+| remaster  | 640 x 400     | 2         | 12 (default)  |
 | large     | 1280 x 800    | 4         | 16            |
 
 To switch presets, pass `--preset` on the command line (preferred) or
@@ -58,10 +61,15 @@ automatically.
 
 Simulation behavior is preset-independent: the same seed produces the
 same world and the same per-tick state digest at every preset. Only
-presentation changes. `classic` is the current default; `remaster` and
-`large` exist for users who want a larger window but still need the
-remaster terrain origin / viewport-fill follow-up before they look as
-polished as the classic preset.
+presentation changes. The M6 ViewportTransform
+(`populous_game/layout.py:build_viewport_transform`) projects the
+visible NxN viewport corners and centers them inside the AmigaUI black
+diamond well at every preset, so `remaster` is the polished default.
+`classic` remains available via `--preset classic` for users who
+prefer the smaller 320x200 internal canvas (3x display scale yields a
+960x600 OS window vs the remaster default's 1920x1200; pair
+`--fit-screen` with either preset to auto-select a window scale that
+fits the monitor).
 
 ## Audio
 

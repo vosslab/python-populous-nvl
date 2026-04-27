@@ -17,13 +17,14 @@ import tools.headless_runner as runner
 
 
 def _set_preset(name):
-	"""Mutate the four mirror constants in settings to match a preset."""
+	"""Mutate the five mirror constants in settings to match a preset."""
 	preset = settings.CANVAS_PRESETS[name]
 	settings.ACTIVE_CANVAS_PRESET = name
 	settings.INTERNAL_WIDTH = preset[0]
 	settings.INTERNAL_HEIGHT = preset[1]
 	settings.HUD_SCALE = preset[2]
 	settings.VISIBLE_TILE_COUNT = preset[3]
+	settings.TERRAIN_SCALE = preset[4]
 
 
 def _digest(game):

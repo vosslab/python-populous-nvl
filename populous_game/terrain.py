@@ -1,11 +1,17 @@
 import pygame
 import random
-import populous_game.layout as layout
 import populous_game.settings as settings
 
 
 def load_tile_surfaces():
-    """Charge le tileset et découpe chaque tile en surface pygame."""
+    """Charge le tileset et découpe chaque tile en surface pygame.
+
+    Tiles are scaled by `settings.TERRAIN_SCALE` at load time so the
+    blit pass downstream does not need to know which preset is active
+    -- the cached surface in `tiles[(row, col)]` is already the right
+    canvas-pixel size. At TERRAIN_SCALE=1 (classic) this is a no-op
+    and the original 32x24 sprite is stored unchanged.
+    """
     sheet_raw = pygame.image.load(settings.TILES_PATH).convert()
     sheet_raw.set_colorkey((0, 49, 0))  # Transparence pour le fond vert des tiles Amiga
     sheet = sheet_raw.convert_alpha()
@@ -22,6 +28,10 @@ def load_tile_surfaces():
 
     ref_w = tile_w
     ref_h = tile_h
+
+    # Snapshot the active terrain scale once. Nearest-neighbor scale
+    # at scale > 1 preserves the chunky-pixel look of the Amiga art.
+    scale = settings.TERRAIN_SCALE
 
     tiles = {}
     for row in range(len(y_starts)):
@@ -43,7 +53,13 @@ def load_tile_surfaces():
                 padded.blit(sub, (0, 0))
                 sub = padded
 
-            # No scaling
+            # Scale by TERRAIN_SCALE so the cached surface lives in the
+            # active canvas pixel space. Skip when scale == 1 to avoid
+            # an unnecessary copy.
+            if scale != 1:
+                scaled_w = sub.get_width() * scale
+                scaled_h = sub.get_height() * scale
+                sub = pygame.transform.scale(sub, (scaled_w, scaled_h))
             tiles[(row, col)] = sub
     return tiles
 
@@ -74,48 +90,6 @@ class GameMap:
                 self.corners[r][c] = clamped
                 return True
         return False
-
-    def world_to_screen(self, r, c, altitude, cam_r=0, cam_c=0):
-        local_r = r - cam_r
-        local_c = c - cam_c
-        # Read terrain origin via layout helper so the math lives in
-        # canvas-pixel space (HUD-scaled). At classic preset this is
-        # identical to (settings.MAP_OFFSET_X, settings.MAP_OFFSET_Y).
-        origin_x, origin_y = layout.terrain_origin()
-        sx = origin_x + (local_c - local_r) * settings.TILE_HALF_W
-        elev = altitude * settings.TILE_HALF_H  # Incrément strict de 8 pixels par niveau
-        sy = origin_y + (local_c + local_r) * settings.TILE_HALF_H - elev
-        return int(sx), int(sy)
-
-    def screen_to_nearest_corner(self, sx, sy, cam_r=0, cam_c=0):
-        best_r, best_c = 0, 0
-        min_dist = float("inf")
-        # Search window must extend past the visible viewport to catch
-        # corners near the bottom-right edge. At classic preset, n=8 and
-        # the window is +12 (matches pre-M4 behavior). At remaster (n=12)
-        # and large (n=16) the window grows with the viewport.
-        n = settings.VISIBLE_TILE_COUNT
-        start_r = max(0, int(cam_r) - 2)
-        end_r = min(self.grid_height + 1, int(cam_r) + n + 4)
-        start_c = max(0, int(cam_c) - 2)
-        end_c = min(self.grid_width + 1, int(cam_c) + n + 4)
-
-        for r in range(start_r, end_r):
-            for c in range(start_c, end_c):
-                alt = self.get_corner_altitude(r, c)
-                px, py = self.world_to_screen(r, c, alt, cam_r, cam_c)
-
-                # Le centre de gravité visuel de l'intersection de la grille isométrique
-                # est décalé vers le bas de TILE_HALF_H (8 pixels) par rapport au top
-                target_y = py + settings.TILE_HALF_H
-
-                # Prendre en compte le ratio isométrique (2:1) pour la forme de la zone de clic
-                d = (sx - px) ** 2 + ((sy - target_y) * 2) ** 2
-
-                if d < min_dist:
-                    min_dist = d
-                    best_r, best_c = r, c
-        return best_r, best_c
 
     def propagate_raise(self, r, c, visited=None):
         if visited is None:
@@ -198,7 +172,11 @@ class GameMap:
                     return settings.TILE_CONSTRUCTED
         return tile
 
-    def draw_tile(self, surface, r, c, cam_r=0, cam_c=0):
+    def draw_tile(self, surface, r, c, transform):
+        # Project terrain corners through the supplied ViewportTransform
+        # so iso math lives in one place (populous_game/layout.py). The
+        # transform already snapshots camera_row / camera_col at frame
+        # build time; cam args are no longer needed here.
         a0 = self.get_corner_altitude(r, c)
         a1 = self.get_corner_altitude(r, c + 1)
         a2 = self.get_corner_altitude(r + 1, c + 1)
@@ -210,41 +188,38 @@ class GameMap:
         if tile_surf is None:
             return
 
-        # Le point world_to_screen(r, c, alt) donne le coin NW (sommet haut du losange)
-        # Le tile doit être positionné pour que le sommet haut du losange soit centré horizontalement
-        sx, sy = self.world_to_screen(r, c, min_alt, cam_r, cam_c)
-        blit_x = sx - settings.TILE_HALF_W
+        # transform.world_to_screen(r, c, alt) returns the corner top
+        # point (NW vertex of the iso diamond); shift left by half a
+        # canvas-scaled tile so the sprite anchor lands on the diamond
+        # center. TILE_HALF_W is in BASE/logical px, so multiply by
+        # TERRAIN_SCALE to match the (already-scaled) tile surface.
+        scale = settings.TERRAIN_SCALE
+        half_w = settings.TILE_HALF_W * scale
+        half_h = settings.TILE_HALF_H * scale
+        sx, sy = transform.world_to_screen(r, c, min_alt)
+        blit_x = sx - half_w
         if tile_key == settings.TILE_FLAT or tile_key == settings.TILE_CONSTRUCTED:
-            blit_y = sy + settings.TILE_HALF_H  # Décale de 8 pixels vers le bas pour les tiles plates
+            # Flat tiles render at corner-y + half_h so they sit
+            # centered on the iso diamond instead of the corner peak.
+            blit_y = sy + half_h
         else:
             blit_y = sy
 
-        # Remplir les faces latérales visibles avec des copies empilées de TILE_FLAT
-        # gap = distance en pixels entre blit_y et le niveau de sol de référence (alt=0)
-        _, sy0 = self.world_to_screen(r, c, 0, cam_r, cam_c)
+        # Stack TILE_FLAT copies underneath to fill the visible side
+        # faces. gap is the pixel distance from the rendered tile down
+        # to ground level (alt=0).
+        _, sy0 = transform.world_to_screen(r, c, 0)
         gap = sy0 - blit_y
-        n_copies = gap // settings.TILE_HALF_H
+        n_copies = gap // half_h
         if n_copies > 0:
             flat_surf = self.tile_surfaces.get(settings.TILE_FLAT)
             if flat_surf is not None:
-                for k in range(n_copies, 0, -1):  # du bas vers le haut
-                    surface.blit(flat_surf, (blit_x, blit_y + k * settings.TILE_HALF_H))
+                # Bottom-to-top so the topmost face ends up nearest the
+                # rendered tile.
+                for k in range(n_copies, 0, -1):
+                    surface.blit(flat_surf, (blit_x, blit_y + k * half_h))
 
         surface.blit(tile_surf, (blit_x, blit_y))
-
-    def screen_to_grid(self, sx, sy, cam_r=0, cam_c=0):
-        # Inverse of world_to_screen; route the origin through the layout
-        # helper so canvas-pixel math stays consistent at every preset.
-        origin_x, origin_y = layout.terrain_origin()
-        X = sx - origin_x
-        Y = sy - origin_y
-
-        U = X / settings.TILE_HALF_W
-        V = Y / settings.TILE_HALF_H
-
-        local_c = (U + V) / 2
-        local_r = (V - U) / 2
-        return int(local_r + cam_r), int(local_c + cam_c)
 
     def get_visible_bounds(self, cam_r, cam_c):
         start_r = int(cam_r)
@@ -255,17 +230,21 @@ class GameMap:
         end_c = min(self.grid_width, start_c + n)
         return start_r, end_r, start_c, end_c
 
-    def draw(self, surface, cam_r=0, cam_c=0):
+    def draw(self, surface, transform):
+        # transform carries the camera position and the active visible
+        # tile budget; honor both so terrain culling stays in sync with
+        # whatever projection the renderer just built for this frame.
+        cam_r = transform.camera_row
+        cam_c = transform.camera_col
         start_r = int(cam_r)
         start_c = int(cam_c)
-        # Viewport extent scales with the active canvas preset's VISIBLE_TILE_COUNT
-        n = settings.VISIBLE_TILE_COUNT
+        n = transform.visible_tiles
         end_r = min(self.grid_height, start_r + n)
         end_c = min(self.grid_width, start_c + n)
 
         for r in range(start_r, end_r):
             for c in range(start_c, end_c):
-                self.draw_tile(surface, r, c, cam_r, cam_c)
+                self.draw_tile(surface, r, c, transform)
 
     def get_flat_area_score(self, r, c, current_house=None):
         # Retourne la liste des tuiles planes adjacentes à (r, c) valides pour la construction
@@ -296,11 +275,13 @@ class GameMap:
 
         return len(valid_tiles), valid_tiles
 
-    def draw_houses(self, surface, cam_r=0, cam_c=0, show_debug=False, debug_font=None):
+    def draw_houses(self, surface, transform, show_debug=False, debug_font=None):
+        # transform owns the camera; derive culling bounds from it.
+        cam_r = transform.camera_row
+        cam_c = transform.camera_col
         start_r = int(cam_r)
         start_c = int(cam_c)
-        # Viewport extent scales with the active canvas preset's VISIBLE_TILE_COUNT
-        n = settings.VISIBLE_TILE_COUNT
+        n = transform.visible_tiles
         end_r = min(self.grid_height, start_r + n)
         end_c = min(self.grid_width, start_c + n)
 
@@ -319,6 +300,10 @@ class GameMap:
                     (1, -1, settings.CASTLE_9_TILES['corner']),      (1, 0, settings.CASTLE_9_TILES['side_tb']),      (1, 1, settings.CASTLE_9_TILES['corner'])
                 ]
                 offsets.sort(key=lambda x: (house.r + x[0]) + (house.c + x[1]))
+                # TILE_HALF_W is base px; cached tile surfaces are
+                # already scaled by TERRAIN_SCALE so the blit offset
+                # must scale to match.
+                half_w = settings.TILE_HALF_W * settings.TERRAIN_SCALE
                 for dr, dc, tile_key in offsets:
                     nr, nc = house.r + dr, house.c + dc
                     # Only draw castle tiles that are within visible bounds
@@ -326,14 +311,14 @@ class GameMap:
                         alt = self.get_corner_altitude(nr, nc)
                         tile_surf = self.tile_surfaces.get(tile_key)
                         if tile_surf is not None:
-                            sx, sy = self.world_to_screen(nr, nc, alt, cam_r, cam_c)
-                            surface.blit(tile_surf, (sx - settings.TILE_HALF_W, sy))
+                            sx, sy = transform.world_to_screen(nr, nc, alt)
+                            surface.blit(tile_surf, (sx - half_w, sy))
                 if flag_surf is not None:
-                    sx, sy = self.world_to_screen(house.r, house.c, self.get_corner_altitude(house.r, house.c), cam_r, cam_c)
+                    sx, sy = transform.world_to_screen(house.r, house.c, self.get_corner_altitude(house.r, house.c))
                     surface.blit(flag_surf, (sx, sy))
-                # Affichage debug vie château (centre)
+                # Affichage debug vie chateau (centre)
                 if show_debug and debug_font is not None:
-                    sx, sy = self.world_to_screen(house.r, house.c, self.get_corner_altitude(house.r, house.c), cam_r, cam_c)
+                    sx, sy = transform.world_to_screen(house.r, house.c, self.get_corner_altitude(house.r, house.c))
                     life_text = debug_font.render(f"{int(house.life)}", True, (0,255,255))
                     text_x = sx - life_text.get_width() // 2
                     text_y = sy - 24
@@ -345,18 +330,21 @@ class GameMap:
             tile_surf = self.tile_surfaces.get(tile_key)
             if tile_surf is None:
                 continue
-            sx, sy = self.world_to_screen(house.r, house.c, alt, cam_r, cam_c)
-            blit_x = sx - settings.TILE_HALF_W
+            sx, sy = transform.world_to_screen(house.r, house.c, alt)
+            # Cached tile surfaces are already scaled by TERRAIN_SCALE;
+            # multiply the half-tile offset to match the canvas px.
+            half_w = settings.TILE_HALF_W * settings.TERRAIN_SCALE
+            blit_x = sx - half_w
             blit_y = sy
             surface.blit(tile_surf, (blit_x, blit_y))
 
-            # Drapeau d'équipe animé (sprites 4,0 et 4,1)
+            # Drapeau d'equipe anime (sprites 4,0 et 4,1)
             if flag_surf is not None:
-                flag_x = blit_x + settings.TILE_HALF_W
+                flag_x = blit_x + half_w
                 flag_y = blit_y
                 surface.blit(flag_surf, (flag_x, flag_y))
 
-            # Affichage debug vie bâtiment
+            # Affichage debug vie batiment
             if show_debug and debug_font is not None:
                 life_text = debug_font.render(f"{int(house.life)}", True, (0,255,255))
                 text_x = sx - life_text.get_width() // 2

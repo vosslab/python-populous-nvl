@@ -9,6 +9,39 @@ which owns the main loop and delegates work to focused modules under the
 [populous_game/](../populous_game/) package. Shared constants and asset
 paths live in [populous_game/settings.py](../populous_game/settings.py).
 
+## Geometry single source of truth (M6 ViewportTransform)
+
+`populous_game/layout.py:ViewportTransform` and the
+`build_viewport_transform()` factory are the **single source of geometry
+truth** for the renderer and the input controller:
+
+- The transform owns world-to-screen and screen-to-world projection.
+  `world_to_screen(r, c, alt)` and `world_to_screen_float(r, c, alt)`
+  produce canvas pixel coordinates; `screen_to_world(x, y)` and
+  `screen_to_nearest_corner(x, y)` resolve canvas pixels back to a tile
+  or corner. Every preset gets the same NxN visible viewport centered
+  inside the AmigaUI black diamond well (`MAP_WELL_RECT_LOGICAL`).
+- Renderers (`populous_game/renderer.py`) and the input controller
+  (`populous_game/input_controller.py`) both route through the
+  transform; no module re-derives `MAP_OFFSET_X / MAP_OFFSET_Y *
+  HUD_SCALE` arithmetic in flight.
+- Sprite anchor offsets (where the foot of a peep, the base of a house,
+  or the tip of a flag should land relative to a projected tile) live in
+  `populous_game/sprite_geometry.py:SPRITE_ANCHORS`, not in renderer
+  code. Renderers call `sprite_geometry._apply_anchor((sx, sy),
+  SPRITE_ANCHORS[name], (sw, sh))` so the same metadata drives blit
+  positions across modules.
+- The camera (`populous_game/camera.py`) operates entirely in world
+  (row / column) coordinates; map-well placement is the layout's
+  responsibility, not the camera's. `camera.r / camera.c` store the
+  top-left of the visible NxN viewport; `build_viewport_transform`
+  projects the four viewport corners to find the bbox center and
+  aligns it to `map_well_rect.center`.
+- The `--debug-layout` CLI flag overlays the map-well rectangle, the
+  projection anchor, every visible tile center, and HUD button hit-boxes
+  for diagnosis. Combine with `--screenshot` for a static snapshot, or
+  run interactively to verify clicks land on the highlighted hit-boxes.
+
 ## Major components
 
 - [populous_game/game.py](../populous_game/game.py) - `Game` class. Owns

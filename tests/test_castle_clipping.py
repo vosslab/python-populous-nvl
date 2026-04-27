@@ -1,9 +1,26 @@
 """Test that castle tiles at viewport edges are clipped correctly."""
 
+import types
+
 import pygame
 
 from populous_game.terrain import GameMap
 from populous_game.houses import House
+import populous_game.layout as layout
+import populous_game.settings as settings
+
+
+def _make_zero_cam_transform():
+	"""Build a ViewportTransform anchored at camera (0, 0).
+
+	Test surfaces use the active canvas layout but force the camera to
+	(0, 0) so the visible bounds of (cam_r, cam_c) -> (0, 8) match the
+	original test expectations.
+	"""
+	cam = types.SimpleNamespace(r=0.0, c=0.0)
+	return layout.build_viewport_transform(
+		layout.active_layout(), cam, settings.VISIBLE_TILE_COUNT,
+	)
 
 
 def test_castle_clips_at_right_edge():
@@ -36,7 +53,8 @@ def test_castle_clips_at_right_edge():
 		test_surface.fill((0, 0, 0))
 
 		# Draw with camera at (0, 0), so visible range is [0, 8) for both r and c
-		game_map.draw_houses(test_surface, cam_r=0, cam_c=0)
+		transform = _make_zero_cam_transform()
+		game_map.draw_houses(test_surface, transform)
 
 		# At position (3, 7), castle's center is at (3, 7)
 		# Castle's 9 tiles extend from (2, 6) to (4, 8)
@@ -77,7 +95,8 @@ def test_castle_at_viewport_corner():
 		test_surface.fill((0, 0, 0))
 
 		# Draw with camera at (0, 0)
-		game_map.draw_houses(test_surface, cam_r=0, cam_c=0)
+		transform = _make_zero_cam_transform()
+		game_map.draw_houses(test_surface, transform)
 
 		# Tiles at (8, 6), (8, 7), (8, 8), (6, 8), (7, 8) should not be drawn
 		# (they are outside [0, 8) x [0, 8) bounds)
@@ -109,7 +128,8 @@ def test_castle_fully_visible():
 		test_surface = pygame.Surface((512, 512))
 		test_surface.fill((0, 0, 0))
 
-		game_map.draw_houses(test_surface, cam_r=0, cam_c=0)
+		transform = _make_zero_cam_transform()
+		game_map.draw_houses(test_surface, transform)
 
 		# All 9 tiles (3, 3) to (5, 5) are within bounds, so all should be drawn
 		assert True, "Fully visible castle test completed without error."

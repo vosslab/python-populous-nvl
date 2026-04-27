@@ -23,6 +23,7 @@ import populous_game.ai_opponent as ai_opponent
 import populous_game.powers as powers
 import populous_game.mana_pool as mana_pool
 import populous_game.keymap as keymap
+import populous_game.layout as layout_module
 
 class Game:
 	def move_camera_direction(self, direction):
@@ -32,9 +33,14 @@ class Game:
 	def player_faction_id(self) -> int:
 		"""Return the player faction ID."""
 		return faction.Faction.PLAYER
-	def __init__(self, display_scale: int | None = None, seed: int | None = None):
+	def __init__(self, display_scale: int | None = None, seed: int | None = None,
+			debug_layout: bool = False):
 		# Load keymap (user config or defaults)
 		self.keymap = keymap.load_keymap()
+		# M6 Patch 8: --debug-layout overlay flag. When True, the renderer
+		# draws diagnostic geometry (HUD/map-well/clip rects, terrain
+		# anchor, visible tile centers, button hit-boxes) on every frame.
+		self.debug_layout = bool(debug_layout)
 
 		# Create mode manager for papal, shield, and D-Pad state
 		self.mode_manager = mode_manager.ModeManager()
@@ -111,6 +117,16 @@ class Game:
 		# mutate module attributes. Each module reads settings.X directly.
 
 		self.camera = camera.Camera()
+		# Snapshot the active canvas layout once. The layout never
+		# changes mid-session (preset is fixed at boot), so a per-frame
+		# rebuild is unnecessary; only the camera-dependent transform
+		# is rebuilt each draw().
+		self.layout = layout_module.active_layout()
+		# Build an initial ViewportTransform so any pre-draw caller can
+		# project safely. draw() refreshes this every frame.
+		self.viewport_transform = layout_module.build_viewport_transform(
+			self.layout, self.camera, settings.VISIBLE_TILE_COUNT
+		)
 		self.game_map = terrain.GameMap(settings.GRID_WIDTH, settings.GRID_HEIGHT)
 		# Honor CLI seed override for deterministic terrain. None falls
 		# back to the wall-clock seeded path used by the existing run().
@@ -118,6 +134,10 @@ class Game:
 			self.game_map.randomize()
 		else:
 			self.game_map.randomize(seed=int(seed))
+		# Apply the flat-water debug pass once at boot. The same helper
+		# runs again whenever _reset_game re-randomizes so a
+		# DEBUG_FLAT_WATER session stays flat across menu->play cycles.
+		self._maybe_flatten_for_debug()
 		self.minimap = minimap.Minimap(0, 0) # Position de la minimap
 
 		# Get weapon sprites from asset registry
@@ -176,6 +196,10 @@ class Game:
 			count: Number of peeps to spawn.
 			faction_id: Faction ID (defaults to Faction.PLAYER).
 		"""
+		# Layout-debug mode: flat water means no land exists; skip peep
+		# spawn entirely so pressing N to start does not crash.
+		if settings.DEBUG_FLAT_WATER:
+			return
 		if faction_id is None:
 			faction_id = faction.Faction.PLAYER
 		for _ in range(count):
@@ -198,6 +222,9 @@ class Game:
 		back to nearest land via BFS if the random pick is water; raises
 		RuntimeError if the map has no land at all.
 		"""
+		# Layout-debug mode: flat water has no land; skip spawn.
+		if settings.DEBUG_FLAT_WATER:
+			return
 		for _ in range(count):
 			r = random.randint(settings.GRID_HEIGHT // 2, settings.GRID_HEIGHT - 1)
 			c = random.randint(settings.GRID_WIDTH // 2, settings.GRID_WIDTH - 1)
@@ -220,6 +247,11 @@ class Game:
 			return  # Only check during gameplay
 		if self.app_state.is_gameover():
 			return  # Already in gameover state
+		# Layout-debug mode: flat water has no peeps so the empty-faction
+		# rule would auto-win every frame. Skip the check so the user
+		# can sit on the rendered diamond and inspect alignment.
+		if settings.DEBUG_FLAT_WATER:
+			return
 		enemy_peeps = [p for p in self.peeps
 			if p.faction_id == faction.Faction.ENEMY
 			and p.state != peep_state.PeepState.DEAD]
@@ -243,11 +275,28 @@ class Game:
 			self.app_state.transition_to(self.app_state.GAMEOVER)
 			return
 
+	def _maybe_flatten_for_debug(self) -> None:
+		"""Zero every corner altitude when settings.DEBUG_FLAT_WATER is set.
+
+		Layout-debug knob: forces the iso terrain to a flat blue diamond
+		so the rendered well shape is unambiguous against the AmigaUI
+		HUD chrome. Off by default. Not exposed via the CLI per the
+		argparse-minimalism rule in docs/PYTHON_STYLE.md -- flip the
+		settings constant when debugging map-well alignment.
+		"""
+		if not settings.DEBUG_FLAT_WATER:
+			return
+		gm = self.game_map
+		for r in range(gm.grid_height + 1):
+			for c in range(gm.grid_width + 1):
+				gm.corners[r][c] = 0
+
 	def _reset_game(self):
 		"""Reset game state for a new session or return to menu."""
 		self.peeps.clear()
 		self.game_map.houses.clear()
 		self.game_map.randomize()
+		self._maybe_flatten_for_debug()
 		self.selection.who = None
 		self.selection.kind = None
 		self.mode_manager.papal_mode = False
@@ -318,7 +367,7 @@ class Game:
 		self.camera.update(dt)
 		self.game_map.update(dt)
 		for p in self.peeps:
-			p.update(dt)
+			p.update(dt, self.viewport_transform)
 			if not p.dead:
 				new_house = p.try_build_house()
 				if new_house is not None and self.selection.kind == 'peep' and self.selection.who == p:
@@ -383,6 +432,12 @@ class Game:
 		self._check_game_over()
 
 	def draw(self):
+		# Refresh the viewport transform once per frame. The camera moves
+		# between frames, but layout / preset state is static, so we
+		# rebuild only the camera-dependent transform here.
+		self.viewport_transform = layout_module.build_viewport_transform(
+			self.layout, self.camera, settings.VISIBLE_TILE_COUNT
+		)
 		# Delegate to renderer; OS cursor is visible (see run() comment).
 		self.renderer.draw_frame()
 		self._draw_debug_overlay()
@@ -400,11 +455,13 @@ class Game:
 		alt_text = "N/A"
 		grid_r, grid_c = -1, -1
 		if self.view_rect.collidepoint(mouse_x, mouse_y):
-			vp_x = mouse_x - self.view_rect.x
-			vp_y = mouse_y - self.view_rect.y
-			grid_r, grid_c = self.game_map.screen_to_nearest_corner(
-				vp_x, vp_y, cam_r, cam_c
-			)
+			# Round the float (row, col) returned by screen_to_world to
+			# the nearest integer corner; this preserves the legacy
+			# screen_to_nearest_corner semantics now that the math
+			# lives in ViewportTransform.
+			rf, cf = self.viewport_transform.screen_to_world(mouse_x, mouse_y)
+			grid_r = int(round(rf))
+			grid_c = int(round(cf))
 			alt = self.game_map.get_corner_altitude(grid_r, grid_c)
 			if alt != -1:
 				alt_text = str(alt)

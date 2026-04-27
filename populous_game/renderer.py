@@ -3,6 +3,7 @@
 import pygame
 import time
 import populous_game.settings as settings
+import populous_game.layout as layout_module
 
 
 class Renderer:
@@ -74,14 +75,45 @@ class Renderer:
 		self.game.internal_surface.blit(cursor, (mx_internal, my_internal))
 
 	def _draw_gameplay(self) -> None:
-		"""Draw the standard gameplay frame (terrain, entities, UI)."""
+		"""Draw the standard gameplay frame (terrain, entities, UI).
+
+		Render order is layered: TERRAIN-SPACE first, then the HUD blit
+		(its iso-hole region is transparent so terrain shows through),
+		then HUD-SPACE overlays. The previous order blitted the HUD on
+		top of a black canvas first and then drew terrain above it; that
+		caused the iso-bbox-shaped terrain layer to overpaint HUD chrome
+		in the bbox corners (dpad / FX / powers). With the iso-hole
+		transparent, drawing terrain BELOW the HUD confines the visible
+		terrain to the diamond exactly.
+		"""
 		self.game.internal_surface.fill(settings.BLACK)
+
+		# --- Terrain-space layers (drawn UNDER the HUD blit) ---
+		# These all live in world tile coordinates and are clipped to
+		# the iso-diamond region by the HUD blit punching a transparent
+		# hole over them.
+		self._draw_terrain()
+		self._draw_houses()
+		self._draw_peeps()
+		self._draw_papal_marker()
+		self._draw_shield_marker_if_active()
+		self._draw_aoe_preview()
+		self._draw_faction_feedback()
+		self._draw_command_queue()
+		self._draw_cursor()
+
+		# --- HUD blit (iso-hole is transparent; chrome is opaque) ---
 		# Use the cached HUD blit surface (presized to the active canvas
 		# in Game.__init__) so non-classic presets cover the full
 		# internal canvas. At classic this surface IS self.ui_image.
+		# The iso diamond at the center has alpha=0 (punched in
+		# assets.load_all via iso_hole.flood_fill_iso_hole) so the
+		# terrain-space layers above remain visible inside the diamond
+		# while HUD chrome covers everything outside it.
 		self.game.internal_surface.blit(self.game.hud_blit_surface, (0, 0))
 
-		# Display clicked button sprite if needed
+		# Display clicked button sprite if needed. Drawn AFTER the HUD
+		# so the flash sits on top of the button artwork.
 		if self.game.last_button_click is not None:
 			action, t0 = self.game.last_button_click
 			show_dpad = False
@@ -122,23 +154,19 @@ class Renderer:
 						pos = (int(bcx - sw // 2) + settings.DPAD_BUTTON_POSITION_ADJ, int(bcy - sh // 2))
 						self.game.internal_surface.blit(sprite, pos)
 
-		self._draw_terrain()
-		self._draw_houses()
-		self._draw_peeps()
-		self._draw_papal_marker()
-		self._draw_shield_marker_if_active()
+		# --- HUD-space overlays (drawn ON TOP of the HUD chrome) ---
 		self._draw_minimap()
-		self._draw_aoe_preview()
 		self._draw_cooldown_overlay()
 		self._draw_shield_panel()
-		self._draw_cursor()
 		self._draw_scanlines()
-		self._draw_faction_feedback()
 		self._draw_mode_indicator()
 		self._draw_mana_readout()
-		self._draw_command_queue()
 		self._draw_tooltip_or_hover_help()
 		self._draw_debug_overlay()
+		# M6 Patch 8: diagnostic layout overlay. No-op unless --debug-layout
+		# was passed; gated inside the method itself so tests / smoke can
+		# flip game.debug_layout post-boot.
+		self._draw_debug_layout_overlay()
 
 	#============================================
 	# Tooltip + hover help (M7)
@@ -218,7 +246,7 @@ class Renderer:
 		# Local imports to keep the renderer module's top-level imports lean
 		import populous_game.peep_state as peep_state
 		import populous_game.faction as faction
-		cam_r, cam_c = self.game.camera.r, self.game.camera.c
+		transform = self.game.viewport_transform
 		color = self.faction_color(faction.Faction.PLAYER)
 		for p in self.game.peeps:
 			if p.faction_id != faction.Faction.PLAYER:
@@ -229,31 +257,30 @@ class Renderer:
 			ty = getattr(p, 'target_y', None)
 			if tx is None or ty is None:
 				continue
-			# Peep position is in (x, y) world coords; convert via game_map
-			# world_to_screen takes (r, c, altitude) -- peep.x/y already are
-			# the (x, y) coords used directly by the peep draw routine.
-			start = self._peep_screen_pos(p, cam_r, cam_c)
-			end = self._world_xy_to_screen(tx, ty, cam_r, cam_c)
+			# peep.x/y are tile-space (col, row) coords; project them
+			# through the viewport transform.
+			start = self._peep_screen_pos(p, transform)
+			end = self._world_xy_to_screen(tx, ty, transform)
 			if start is None or end is None:
 				continue
 			pygame.draw.line(self.game.internal_surface, color, start, end, 1)
 
-	def _peep_screen_pos(self, peep, cam_r: float, cam_c: float) -> tuple | None:
+	def _peep_screen_pos(self, peep, transform) -> tuple | None:
 		"""Get the screen-space center of a peep sprite, or None if off-screen."""
 		# Peep coords map: row = peep.y, col = peep.x in tile space; altitude
 		# under the peep is read from terrain corners.
 		alt = self.game.game_map.get_corner_altitude(int(peep.y), int(peep.x))
 		if alt < 0:
 			return None
-		sx, sy = self.game.game_map.world_to_screen(peep.y, peep.x, alt, cam_r, cam_c)
+		sx, sy = transform.world_to_screen(peep.y, peep.x, alt)
 		return (sx, sy)
 
-	def _world_xy_to_screen(self, x: float, y: float, cam_r: float, cam_c: float) -> tuple | None:
+	def _world_xy_to_screen(self, x: float, y: float, transform) -> tuple | None:
 		"""Convert peep target_x/target_y to screen coords, or None if invalid."""
 		alt = self.game.game_map.get_corner_altitude(int(y), int(x))
 		if alt < 0:
 			return None
-		sx, sy = self.game.game_map.world_to_screen(y, x, alt, cam_r, cam_c)
+		sx, sy = transform.world_to_screen(y, x, alt)
 		return (sx, sy)
 
 	#============================================
@@ -268,12 +295,18 @@ class Renderer:
 		title_rect = title_text.get_rect(center=(self.game.internal_surface.get_width() // 2, 80))
 		self.game.internal_surface.blit(title_text, title_rect)
 
-		# Menu options
+		# Menu options. Each entry shows its hotkey in parentheses so the
+		# keymap is discoverable. Continue is rendered for visual parity
+		# with the original Populous menu but is disabled until save/load
+		# lands (no key wired). Click anywhere also starts a new game.
 		option_font = pygame.font.SysFont("consolas", 24)
-		options = ["New game", "Continue", "Quit"]
+		options = [
+			("(N)ew game", settings.WHITE),
+			("Continue",   settings.GRAY),
+			("(Q)uit",     settings.WHITE),
+		]
 		option_y = 180
-		for i, option in enumerate(options):
-			color = settings.WHITE
+		for i, (option, color) in enumerate(options):
 			text = option_font.render(option, True, color)
 			text_rect = text.get_rect(center=(self.game.internal_surface.get_width() // 2, option_y + i * 50))
 			self.game.internal_surface.blit(text, text_rect)
@@ -314,25 +347,29 @@ class Renderer:
 
 	def _draw_terrain(self) -> None:
 		"""Draw terrain tiles."""
-		cam_r, cam_c = self.game.camera.r, self.game.camera.c
-		self.game.game_map.draw(self.game.internal_surface, cam_r, cam_c)
+		self.game.game_map.draw(self.game.internal_surface, self.game.viewport_transform)
 
 	def _draw_houses(self) -> None:
 		"""Draw houses and their health displays."""
-		cam_r, cam_c = self.game.camera.r, self.game.camera.c
 		debug_font = pygame.font.SysFont("consolas", settings.DEBUG_FONT_SIZE, bold=True) if self.game.show_debug else None
-		self.game.game_map.draw_houses(self.game.internal_surface, cam_r, cam_c, show_debug=self.game.show_debug, debug_font=debug_font)
+		self.game.game_map.draw_houses(
+			self.game.internal_surface,
+			self.game.viewport_transform,
+			show_debug=self.game.show_debug,
+			debug_font=debug_font,
+		)
 
 	def _draw_peeps(self) -> None:
 		"""Draw peeps and their debug info."""
 		cam_r, cam_c = self.game.camera.r, self.game.camera.c
 		debug_font = pygame.font.SysFont("consolas", settings.DEBUG_FONT_SIZE, bold=True) if self.game.show_debug else None
 		start_r, end_r, start_c, end_c = self.game.game_map.get_visible_bounds(cam_r, cam_c)
+		transform = self.game.viewport_transform
 
 		for p in self.game.peeps:
 			if p.y < start_r or p.y >= end_r or p.x < start_c or p.x >= end_c:
 				continue
-			p.draw(self.game.internal_surface, cam_r, cam_c, show_debug=self.game.show_debug, debug_font=debug_font)
+			p.draw(self.game.internal_surface, transform, show_debug=self.game.show_debug, debug_font=debug_font)
 
 	def _draw_papal_marker(self) -> None:
 		"""Draw papal marker (tile 5,0) after houses and peeps."""
@@ -343,8 +380,9 @@ class Renderer:
 			start_r, end_r, start_c, end_c = self.game.game_map.get_visible_bounds(cam_r, cam_c)
 			if start_r <= r < end_r and start_c <= c < end_c:
 				alt = self.game.game_map.get_corner_altitude(r, c)
-				sx, sy = self.game.game_map.world_to_screen(r, c, alt, cam_r, cam_c)
-				blit_x = sx - settings.TILE_HALF_W
+				sx, sy = self.game.viewport_transform.world_to_screen(r, c, alt)
+				# papal_tile is cached scaled by TERRAIN_SCALE; match the offset.
+				blit_x = sx - settings.TILE_HALF_W * settings.TERRAIN_SCALE
 				blit_y = sy
 				self.game.internal_surface.blit(papal_tile, (blit_x, blit_y))
 
@@ -368,22 +406,26 @@ class Renderer:
 
 		# Display star only if mouse is on terrain
 		if self.game.view_rect.collidepoint(mouse_x, mouse_y):
-			vp_x = mouse_x - self.game.view_rect.x
-			vp_y = mouse_y - self.game.view_rect.y
-			grid_r, grid_c = self.game.game_map.screen_to_nearest_corner(
-				vp_x, vp_y, cam_r, cam_c
-			)
+			# Round screen_to_world's float (row, col) to the nearest
+			# integer corner, matching the legacy
+			# screen_to_nearest_corner semantics. mouse_x/y are in
+			# canvas-pixel space (already // display_scale).
+			rf, cf = self.game.viewport_transform.screen_to_world(mouse_x, mouse_y)
+			grid_r = int(round(rf))
+			grid_c = int(round(cf))
 
 			# Restrict star to visible bounds
 			start_r, end_r, start_c, end_c = self.game.game_map.get_visible_bounds(cam_r, cam_c)
 			if start_r <= grid_r < end_r and start_c <= grid_c < end_c:
 				alt = self.game.game_map.get_corner_altitude(grid_r, grid_c)
-				sx, sy = self.game.game_map.world_to_screen(grid_r, grid_c, alt, cam_r, cam_c)
+				sx, sy = self.game.viewport_transform.world_to_screen(grid_r, grid_c, alt)
 
 				# Draw a simple star (6-pointed)
 				star_tile = self.game.game_map.tile_surfaces.get((1, 0))
 				if star_tile:
-					self.game.internal_surface.blit(star_tile, (sx - settings.TILE_HALF_W, sy))
+					# star_tile is cached scaled by TERRAIN_SCALE; match the offset.
+					blit_x = sx - settings.TILE_HALF_W * settings.TERRAIN_SCALE
+					self.game.internal_surface.blit(star_tile, (blit_x, sy))
 
 	def _draw_minimap(self) -> None:
 		"""Draw minimap."""
@@ -409,6 +451,12 @@ class Renderer:
 		"""Draw faction color indicators on peeps and houses."""
 		cam_r, cam_c = self.game.camera.r, self.game.camera.c
 		start_r, end_r, start_c, end_c = self.game.game_map.get_visible_bounds(cam_r, cam_c)
+		transform = self.game.viewport_transform
+
+		# Faction color rectangles are anchored to the diamond ground
+		# line (corner-y + half_h). Half-height is in canvas px so it
+		# scales with TERRAIN_SCALE alongside the tile and peep sprites.
+		half_h = settings.TILE_HALF_H * settings.TERRAIN_SCALE
 
 		# Draw faction color indicator below each peep
 		for p in self.game.peeps:
@@ -423,8 +471,8 @@ class Renderer:
 			a_se = self.game.game_map.get_corner_altitude(gr + 1, gc + 1)
 			alt = (1 - fx) * (1 - fy) * a_nw + fx * (1 - fy) * a_ne \
 				+ (1 - fx) * fy       * a_sw + fx * fy       * a_se
-			sx, sy = self.game.game_map.world_to_screen(p.y, p.x, alt, cam_r, cam_c)
-			ground_y = sy + settings.TILE_HALF_H
+			sx, sy = transform.world_to_screen(p.y, p.x, alt)
+			ground_y = sy + half_h
 			faction_color = self.faction_color(p.faction_id)
 			pygame.draw.rect(self.game.internal_surface, faction_color, (sx - 1, ground_y + 8, 3, 3))
 
@@ -433,8 +481,8 @@ class Renderer:
 			if house.r < start_r or house.r >= end_r or house.c < start_c or house.c >= end_c:
 				continue
 			alt = self.game.game_map.get_corner_altitude(house.r, house.c)
-			sx, sy = self.game.game_map.world_to_screen(house.r, house.c, alt, cam_r, cam_c)
-			ground_y = sy + settings.TILE_HALF_H
+			sx, sy = transform.world_to_screen(house.r, house.c, alt)
+			ground_y = sy + half_h
 			faction_color = self.faction_color(house.faction_id)
 			pygame.draw.rect(self.game.internal_surface, faction_color, (sx - 1, ground_y + 12, 3, 3))
 
@@ -467,6 +515,94 @@ class Renderer:
 		# This can be extended later for more debug visualization
 		pass
 
+	#============================================
+	# Diagnostic layout overlay (M6 Patch 8)
+	#============================================
+
+	def _draw_debug_layout_overlay(self) -> None:
+		"""Overlay layout diagnostic graphics on the internal canvas.
+
+		Draws:
+		  - HUD rect outline (white, 1 px)
+		  - Map-well rect outline (cyan, 1 px)
+		  - Terrain clip rect outline (yellow, 1 px)
+		  - Terrain anchor (3x3 magenta square at the projection anchor)
+		  - Visible tile centers (1 px red pixel at each tile center)
+		  - HUD button hit-boxes (1 px green outlines)
+
+		No-op unless `self.game.debug_layout` is True. Drawn on the
+		internal surface so it scales with the rest of the canvas when
+		the renderer blits + scales to the OS window.
+		"""
+		# Cheap gate: --debug-layout opt-in only.
+		if not self.game.debug_layout:
+			return
+
+		surface = self.game.internal_surface
+		layout = self.game.layout
+		transform = self.game.viewport_transform
+
+		# Diagnostic colors. Pure-channel triples so the test can sample
+		# pixels exactly without palette ambiguity.
+		color_hud = (255, 255, 255)
+		color_well = (0, 200, 255)
+		color_clip = (255, 220, 0)
+		color_anchor = (255, 0, 255)
+		color_tile = (255, 0, 0)
+		color_button = (0, 220, 0)
+
+		# Outline the HUD rect.
+		pygame.draw.rect(surface, color_hud, layout.hud_rect, 1)
+		# Outline the terrain clip rect first; the map-well rect paints
+		# over it so cyan wins where the two currently coincide. A future
+		# divergence (clip != well) becomes visible at a glance because
+		# the yellow clip outline will then peek out from under cyan.
+		pygame.draw.rect(surface, color_clip, layout.terrain_clip_rect, 1)
+		# Outline the map well (visible terrain region).
+		pygame.draw.rect(surface, color_well, layout.map_well_rect, 1)
+
+		# Red 1x1 dot at every visible tile center. Drawn BEFORE the
+		# magenta anchor square so the anchor wins in the (common)
+		# case where the anchor pixel coincides with a tile center.
+		# Iterate via the game_map's visible-bounds helper (still
+		# present post-Patch-3).
+		cam_r = transform.camera_row
+		cam_c = transform.camera_col
+		start_r, end_r, start_c, end_c = self.game.game_map.get_visible_bounds(cam_r, cam_c)
+		surf_w, surf_h = surface.get_size()
+		for r in range(start_r, end_r):
+			for c in range(start_c, end_c):
+				# Tile-center altitude is incidental for the diagnostic;
+				# we only care about the projected pixel center, so use
+				# the corner altitude (cheap, already cached). Off-grid
+				# coords return -1, but tiles in [start_r, end_r) are by
+				# construction inside the grid.
+				alt = self.game.game_map.get_corner_altitude(r, c)
+				if alt < 0:
+					alt = 0
+				sx, sy = transform.world_to_screen(r + 0.5, c + 0.5, alt)
+				# Only paint if the projected center sits on the canvas.
+				if 0 <= sx < surf_w and 0 <= sy < surf_h:
+					surface.set_at((sx, sy), color_tile)
+
+		# Magenta 3x3 square centered at the terrain anchor pixel.
+		# Drawn AFTER tile centers so it stays visible when a tile
+		# center happens to project to the anchor pixel.
+		anchor_rect = pygame.Rect(
+			transform.anchor_x - 1,
+			transform.anchor_y - 1,
+			3,
+			3,
+		)
+		pygame.draw.rect(surface, color_anchor, anchor_rect)
+
+		# Green 1 px outline around every UI button hit-box. Use the
+		# layout helper so the rect lives in canvas-pixel space, not
+		# logical 320x200 space.
+		for action in self.game.ui_panel.buttons:
+			x, y, w, h = layout_module.button_hit_box(action, self.game.ui_panel.buttons)
+			pygame.draw.rect(surface, color_button, pygame.Rect(x, y, w, h), 1)
+
 	def _draw_aoe_preview(self) -> None:
 		"""Draw AOE preview overlay when a power is pending targeting."""
 		if not self.game.mode_manager.pending_power:
@@ -482,14 +618,13 @@ class Renderer:
 			return
 
 		# Convert to viewport coordinates
-		vp_x = mouse_x - self.game.view_rect.x
-		vp_y = mouse_y - self.game.view_rect.y
 		cam_r, cam_c = self.game.camera.r, self.game.camera.c
 
-		# Get target cell
-		grid_r, grid_c = self.game.game_map.screen_to_nearest_corner(
-			vp_x, vp_y, cam_r, cam_c
-		)
+		# Get target cell via the viewport transform; mouse_x/y are in
+		# canvas-pixel space (already // display_scale).
+		rf, cf = self.game.viewport_transform.screen_to_world(mouse_x, mouse_y)
+		grid_r = int(round(rf))
+		grid_c = int(round(cf))
 
 		# Get power specs
 		import populous_game.powers as powers_module
@@ -518,8 +653,8 @@ class Renderer:
 			# Get altitude at corner
 			alt = self.game.game_map.get_corner_altitude(r, c)
 
-			# Convert to screen position
-			sx, sy = self.game.game_map.world_to_screen(r, c, alt, cam_r, cam_c)
+			# Convert to screen position via viewport transform
+			sx, sy = self.game.viewport_transform.world_to_screen(r, c, alt)
 
 			# Draw translucent colored rect at cell position
 			# Each cell is roughly a diamond; draw a small rect at the center

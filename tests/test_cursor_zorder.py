@@ -8,8 +8,14 @@ from populous_game.game import Game
 
 def test_cursor_renders_after_shield_panel():
 	"""
-	Verify that _draw_cursor is called after _draw_shield_panel
-	by checking the call order in renderer.draw_frame().
+	Verify that the OS-mouse-position cursor sprite renders after
+	_draw_shield_panel by checking call order in renderer.draw_frame().
+
+	The user-visible cursor is _draw_custom_cursor (drawn at the OS
+	mouse position, last step of draw_frame). _draw_cursor is the
+	terrain-corner star highlight, which post-iso-hole-fix lives in
+	terrain-space and draws BELOW the HUD by design (the HUD's
+	transparent iso-hole exposes the star inside the diamond).
 	"""
 	pygame.init()
 	pygame.display.set_mode((1, 1))  # minimal display for headless
@@ -26,7 +32,7 @@ def test_cursor_renders_after_shield_panel():
 		# Mock the draw methods to track call order
 		call_order = []
 
-		original_draw_cursor = game.renderer._draw_cursor
+		original_draw_cursor = game.renderer._draw_custom_cursor
 		original_draw_shield = game.renderer._draw_shield_panel
 
 		def track_cursor():
@@ -37,20 +43,15 @@ def test_cursor_renders_after_shield_panel():
 			call_order.append('shield')
 			original_draw_shield()
 
-		game.renderer._draw_cursor = track_cursor
+		game.renderer._draw_custom_cursor = track_cursor
 		game.renderer._draw_shield_panel = track_shield
 
 		# Render one frame
 		game.renderer.draw_frame()
 
-		# Find indices of both calls
-		try:
-			cursor_idx = call_order.index('cursor')
-			shield_idx = call_order.index('shield')
-		except ValueError:
-			# If one or both not found, test fails
-			cursor_idx = -1
-			shield_idx = -1
+		# Find indices of both calls; if missing, test fails.
+		cursor_idx = call_order.index('cursor') if 'cursor' in call_order else -1
+		shield_idx = call_order.index('shield') if 'shield' in call_order else -1
 
 		# Cursor must be called AFTER shield (higher index = later in draw order)
 		assert cursor_idx > shield_idx, f"Cursor draw order {cursor_idx} must be after shield {shield_idx}. Call order: {call_order}"

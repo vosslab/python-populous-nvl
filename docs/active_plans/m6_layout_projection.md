@@ -65,7 +65,7 @@ Provide `active_layout()` returning a `Layout` instance derived from
 `settings.CANVAS_PRESETS[settings.ACTIVE_CANVAS_PRESET]`.
 
 The map-well rectangle must be measured from the AmigaUI sprite once
-(empirically — the well is iso-shaped in the 320x200 logical space)
+(empirically - the well is iso-shaped in the 320x200 logical space)
 and stored as logical coordinates in `CANVAS_PRESETS` or a sibling
 constant. At remaster / large presets, the rectangle scales by
 `HUD_SCALE`. The terrain anchor centers the iso diamond inside the

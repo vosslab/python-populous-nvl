@@ -74,8 +74,23 @@ class UIPanel:
 		return best_action
 
 	def select_at(self, mx, my, peeps, houses, camera, game_map) -> tuple:
-		"""Hit-test entities at (mx, my). Return (entity, kind) or (None, None)."""
-		cam_r, cam_c = camera.r, camera.c
+		"""Hit-test entities at (mx, my). Return (entity, kind) or (None, None).
+
+		mx, my arrive in logical-space coords (matching the rest of
+		ui_panel's hit-tests). Sprite rects from sprite_geometry are
+		built from canvas-pixel coords via the active ViewportTransform,
+		so we scale the click point up by HUD_SCALE before colliding so
+		the hover/click rect lines up with the visible sprite at every
+		canvas preset. At classic (HUD_SCALE == 1) this is a no-op.
+		"""
+		# Camera arg is kept for back-compat with existing callsites;
+		# entity geometry now flows through self.game.viewport_transform.
+		del camera
+		transform = self.game.viewport_transform
+		# Scale the click into canvas-pixel space so it matches the rect
+		# coord space returned by sprite_geometry.
+		px = mx * settings.HUD_SCALE
+		py = my * settings.HUD_SCALE
 		best_target = None
 		best_type = None
 		best_dist = float('inf')
@@ -83,10 +98,10 @@ class UIPanel:
 		for house in houses:
 			if house.destroyed:
 				continue
-			rect = sprite_geometry.get_house_sprite_rect(house, cam_r, cam_c, game_map)
-			if rect.collidepoint(mx, my):
-				dx = mx - rect.centerx
-				dy = my - rect.centery
+			rect = sprite_geometry.get_house_sprite_rect(house, transform, game_map)
+			if rect.collidepoint(px, py):
+				dx = px - rect.centerx
+				dy = py - rect.centery
 				d2 = dx * dx + dy * dy
 				if d2 < best_dist:
 					best_dist = d2
@@ -96,10 +111,10 @@ class UIPanel:
 		for p in peeps:
 			if p.dead:
 				continue
-			rect = sprite_geometry.get_peep_sprite_rect(p, cam_r, cam_c, game_map)
-			if rect.collidepoint(mx, my):
-				dx = mx - rect.centerx
-				dy = my - rect.centery
+			rect = sprite_geometry.get_peep_sprite_rect(p, transform, game_map)
+			if rect.collidepoint(px, py):
+				dx = px - rect.centerx
+				dy = py - rect.centery
 				d2 = dx * dx + dy * dy
 				if d2 < best_dist:
 					best_dist = d2
@@ -146,13 +161,18 @@ class UIPanel:
 			}
 			return info
 
-		# Fall back to terrain corner under the cursor
-		cam_r, cam_c = game.camera.r, game.camera.c
+		# Fall back to terrain corner under the cursor.
 		if not game.view_rect.collidepoint(mx, my):
 			return None
-		vp_x = mx - game.view_rect.x
-		vp_y = my - game.view_rect.y
-		r, c = game.game_map.screen_to_nearest_corner(vp_x, vp_y, cam_r, cam_c)
+		# Round the float (row, col) returned by screen_to_world to the
+		# nearest integer corner. mx / my arrive in 320x200 logical
+		# space; the transform expects canvas-pixel space, so scale up
+		# by HUD_SCALE before projecting.
+		px = mx * settings.HUD_SCALE
+		py = my * settings.HUD_SCALE
+		rf, cf = game.viewport_transform.screen_to_world(px, py)
+		r = int(round(rf))
+		c = int(round(cf))
 		alt = game.game_map.get_corner_altitude(r, c)
 		if alt < 0:
 			return None
@@ -166,13 +186,18 @@ class UIPanel:
 
 	def draw_shield_marker(self, surface, target, target_type, cam_r, cam_c, game_map):
 		"""Draw shield sprite above selected entity."""
+		# cam_r / cam_c remain in the signature for back-compat with
+		# the renderer caller; entity geometry now flows through the
+		# game's viewport_transform.
+		del cam_r, cam_c
+		transform = self.game.viewport_transform
 		sprites = peep.Peep.get_sprites()
 		shield_sprite = sprites.get((8, 8))
 		if shield_sprite is None:
 			return
 
 		if target_type == 'peep':
-			rect = sprite_geometry.get_peep_sprite_rect(target, cam_r, cam_c, game_map)
+			rect = sprite_geometry.get_peep_sprite_rect(target, transform, game_map)
 			# On peep as if holding it (slightly offset)
 			x = rect.centerx + settings.UI_SHIELD_MARKER_PEEP_X
 			y = rect.centery - shield_sprite.get_height() // 2 + settings.UI_SHIELD_MARKER_PEEP_Y
@@ -184,15 +209,21 @@ class UIPanel:
 			center_r = getattr(target, 'r', 0)
 			center_c = getattr(target, 'c', 0)
 			alt = game_map.get_corner_altitude(center_r, center_c)
-			sx, sy = game_map.world_to_screen(center_r, center_c, alt, cam_r, cam_c)
-			# Simulate a virtual rect for center case
-			rect = pygame.Rect(sx - settings.TILE_HALF_W, sy, settings.TILE_WIDTH, settings.TILE_HEIGHT)
+			sx, sy = transform.world_to_screen(center_r, center_c, alt)
+			# Simulate a virtual rect for center case. Tile dims are
+			# in BASE px so the rect must scale by TERRAIN_SCALE to
+			# match the cached scaled tile sprites.
+			scale = settings.TERRAIN_SCALE
+			rect = pygame.Rect(
+				sx - settings.TILE_HALF_W * scale, sy,
+				settings.TILE_WIDTH * scale, settings.TILE_HEIGHT * scale,
+			)
 			x = rect.centerx - shield_sprite.get_width() // 2 + settings.UI_SHIELD_MARKER_OFFSET_X
 			y = rect.top - shield_sprite.get_height() - 2 + settings.UI_SHIELD_MARKER_OFFSET_Y
 			surface.blit(shield_sprite, (x, y))
 			return
 
-		rect = sprite_geometry.get_house_sprite_rect(target, cam_r, cam_c, game_map)
+		rect = sprite_geometry.get_house_sprite_rect(target, transform, game_map)
 		# Generic offset for other buildings
 		x = rect.centerx - shield_sprite.get_width() // 2 + settings.UI_SHIELD_MARKER_OFFSET_X
 		y = rect.top - shield_sprite.get_height() - 2 + settings.UI_SHIELD_MARKER_OFFSET_Y

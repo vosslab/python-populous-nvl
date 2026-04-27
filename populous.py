@@ -32,7 +32,11 @@ def main() -> None:
 			settings.INTERNAL_WIDTH, settings.INTERNAL_HEIGHT,
 		)
 
-	game = game_module.Game(display_scale=display_scale, seed=args.seed)
+	game = game_module.Game(
+		display_scale=display_scale,
+		seed=args.seed,
+		debug_layout=args.debug_layout,
+	)
 	# Headless capture path: render one frame to disk and exit.
 	if args.screenshot is not None:
 		cli.capture_screenshot_and_exit(game, args.screenshot)

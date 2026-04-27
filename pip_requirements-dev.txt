@@ -1,6 +1,7 @@
 # Development dependencies
 bandit  # security linting for Python code
 packaging  # version parsing/comparison helpers used by tooling/tests
+pillow  # tools/measure_map_well.py reads AmigaUI.png; not used at gameplay runtime
 pyflakes  # static analysis lint checks
 pytest  # automated test runner
 rich  # formatted terminal output in developer tools

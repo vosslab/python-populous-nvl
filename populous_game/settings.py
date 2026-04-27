@@ -25,27 +25,37 @@ SCREEN_HEIGHT: int = 200
 # by 1x, 2x, or 4x at blit time. Switching presets must not change
 # simulation outcomes (canvas size is presentation only).
 #
-# Each preset declares (internal_width, internal_height, hud_scale,
-# visible_tile_count). The hud_scale multiplies the 320x200 AmigaUI
-# sprite at nearest-neighbor blit time so no new HUD art is required.
+# Each preset declares
+# (internal_width, internal_height, hud_scale, visible_tile_count,
+# terrain_scale). The hud_scale multiplies the 320x200 AmigaUI sprite
+# at nearest-neighbor blit time so no new HUD art is required. The
+# terrain_scale (5th field) multiplies the iso tile and peep sprites
+# at load time so the terrain looks like the original Amiga blown up
+# at 2x / 4x rather than tiny modern pixels surrounded by chunky HUD.
 CANVAS_PRESETS: dict = {
-    'classic':  (320,  200, 1, 8),
-    'remaster': (640,  400, 2, 12),
-    'large':    (1280, 800, 4, 16),
+    'classic':  (320,  200, 1, 8, 1),
+    'remaster': (640,  400, 2, 8, 2),
+    'large':    (1280, 800, 4, 8, 4),
 }
 
-# Active preset selected at boot. The remaster (640x400) and large
-# (1280x800) presets exercise the layout helpers correctly for HUD
-# scaling and simulation parity, but the iso terrain diamond does NOT
-# yet fill the bigger HUD viewport hole correctly: tile pixel spacing
-# (TILE_HALF_W / TILE_HALF_H) is preset-independent, so a 12-tile
-# diamond at remaster occupies less of the upscaled hole than the
-# 8-tile diamond did at classic, and `MAP_OFFSET_Y` is not recentered
-# for the upscaled hole. Default reverts to `classic` until that
-# layout work lands. The 1920x1200 OS window the remaster default
-# produced also exceeded common laptop screens (`display_scale = 3`
-# multiplies internal width by 3, so 640 -> 1920).
-ACTIVE_CANVAS_PRESET: str = 'classic'
+# Active preset selected at boot. The M6 ViewportTransform
+# (`populous_game/layout.py:build_viewport_transform`) projects the
+# visible NxN viewport corners and centers the resulting bbox inside
+# `MAP_WELL_RECT_LOGICAL` to within 1 px at every preset, so the
+# remaster (640x400) terrain now lands inside the AmigaUI black
+# diamond well rather than half a viewport below it. Remaster is the
+# polished default; `--preset classic` is still available via the CLI
+# for users who prefer the smaller window (3x scale on classic = a
+# 960x600 OS window vs remaster's 1920x1200 at the same display
+# scale; pair `--preset remaster` with `--fit-screen` on small
+# displays to auto-pick a window scale that fits the monitor).
+#
+# Visible-tile count is fixed at 8 across all presets in chunky-pixels
+# mode: the larger presets show the SAME number of tiles, just bigger,
+# instead of more tiles at native size. This matches the original
+# Amiga's 8x8 visible viewport and keeps the iso diamond filling the
+# AmigaUI map well with the canonical Amiga proportions.
+ACTIVE_CANVAS_PRESET: str = 'remaster'
 
 # Convenience accessors. Mirror the SCREEN_WIDTH/HEIGHT pair so existing
 # code keeps reading the same names. Layout helpers prefer these.
@@ -53,6 +63,7 @@ INTERNAL_WIDTH: int = CANVAS_PRESETS[ACTIVE_CANVAS_PRESET][0]
 INTERNAL_HEIGHT: int = CANVAS_PRESETS[ACTIVE_CANVAS_PRESET][1]
 HUD_SCALE: int = CANVAS_PRESETS[ACTIVE_CANVAS_PRESET][2]
 VISIBLE_TILE_COUNT: int = CANVAS_PRESETS[ACTIVE_CANVAS_PRESET][3]
+TERRAIN_SCALE: int = CANVAS_PRESETS[ACTIVE_CANVAS_PRESET][4]
 
 # === Couleurs ===
 BLACK: tuple = (0, 0, 0)
@@ -77,6 +88,43 @@ TILE_WIDTH: int = 32
 TILE_HEIGHT: int = 24
 TILE_HALF_W: int = 16
 TILE_HALF_H: int = 8
+
+# === Tile geometry base constants (M6 ViewportTransform foundation) ===
+# Logical-space tile dimensions; not yet preset-scaled. The active
+# Layout exposes preset-scaled values (tile_w = BASE_TILE_HALF_W * 2 *
+# TERRAIN_SCALE). HUD_SCALE (canvas preset) and TERRAIN_SCALE (tile
+# art) are independent in principle but are matched per-preset above
+# (1/1, 2/2, 4/4) so the terrain visibly scales together with the HUD
+# chrome -- "chunky-pixels mode" -- to match the original Amiga look
+# blown up rather than a tiny modern terrain surrounded by chunky HUD.
+BASE_TILE_HALF_W: int = 16
+BASE_TILE_HALF_H: int = 8
+# One altitude step rises by half a tile vertically. The original
+# world_to_screen formula was `elev = altitude * TILE_HALF_H`, so
+# the altitude step IS TILE_HALF_H by construction. Wiring it
+# through BASE_TILE_HALF_H keeps the two in lock-step: changing tile
+# geometry automatically updates the altitude step, and the side-face
+# fill stack in terrain.draw_tile keeps producing the right number of
+# TILE_FLAT copies (gap // half_h evaluates to the altitude difference
+# rather than zero, which produced "vertical walls" at preset boots
+# where altitude_step was previously stuck at 1).
+BASE_ALTITUDE_STEP: int = BASE_TILE_HALF_H
+
+# === Map well rectangle (M6 ViewportTransform foundation) ===
+# The iso-shaped black diamond in AmigaUI.png expressed as an axis-
+# aligned rectangle in 320x200 logical space. Single source of truth;
+# preset-scaled at use site by HUD_SCALE. Re-measure with
+# tools/measure_map_well.py if the AmigaUI sprite changes.
+# Tuple form (not pygame.Rect) so settings.py stays pygame-import-free.
+MAP_WELL_RECT_LOGICAL: tuple = (64, 72, 256, 128)
+
+# Layout-debug knob. When True, GameMap.randomize is followed by a
+# zero-altitude pass so the entire iso terrain renders as flat blue
+# water. Use to visually confirm the rendered diamond aligns with
+# MAP_WELL_RECT_LOGICAL after preset / TERRAIN_SCALE changes. Off
+# by default; not exposed via the CLI per the argparse-minimalism
+# rule in docs/PYTHON_STYLE.md -- flip here when debugging.
+DEBUG_FLAT_WATER: bool = False
 
 # === Iso terrain origin within the AmigaUI viewport hole ===
 # These mark the screen position of the (cam_r, cam_c) corner of the
@@ -319,7 +367,11 @@ BUTTON_TOOLTIPS: dict = {
 # Drag-paint terrain timing
 #============================================
 
-DRAG_PAINT_INTERVAL: float = 0.05  # seconds between paint events when dragging
+DRAG_PAINT_INTERVAL: float = 0.10  # seconds between paint events while dragging
+# Auto-repeat grace period: drag-paint does not start until the user has
+# held the mouse button for this long. Prevents a quick click (which can
+# easily last 150-200 ms) from registering as 3-4 raise/lower actions.
+DRAG_PAINT_INITIAL_DELAY: float = 0.30
 
 #============================================
 # Minimap zoom

@@ -80,6 +80,14 @@ def parse_args(argv: list | None = None) -> argparse.Namespace:
 		'-o', '--screenshot', dest='screenshot', default=None,
 		help='Capture the first rendered post-start frame to PATH (PNG) and exit.'
 	)
+	# Diagnostic layout overlay (M6 Patch 8).
+	parser.add_argument(
+		'-d', '--debug-layout', dest='debug_layout', action='store_true',
+		help='Overlay layout diagnostic graphics on every frame: HUD rect, '
+			'map-well rect, terrain clip rect, terrain anchor, tile centers, '
+			'and HUD button hit-boxes.'
+	)
+	parser.set_defaults(debug_layout=False)
 	args = parser.parse_args(argv)
 	return args
 
@@ -122,7 +130,7 @@ def apply_args_to_settings(args: argparse.Namespace) -> None:
 	--window-scale, --fit-screen, --seed, and --screenshot are consumed
 	at Game construction time, not here.
 	"""
-	# Preset switch: re-derive the four mirror constants from CANVAS_PRESETS.
+	# Preset switch: re-derive the five mirror constants from CANVAS_PRESETS.
 	if args.preset is not None:
 		preset = settings.CANVAS_PRESETS[args.preset]
 		settings.ACTIVE_CANVAS_PRESET = args.preset
@@ -130,14 +138,34 @@ def apply_args_to_settings(args: argparse.Namespace) -> None:
 		settings.INTERNAL_HEIGHT = preset[1]
 		settings.HUD_SCALE = preset[2]
 		settings.VISIBLE_TILE_COUNT = preset[3]
+		settings.TERRAIN_SCALE = preset[4]
 	# Direct size override; only mutates INTERNAL_WIDTH/HEIGHT, not HUD_SCALE.
 	if args.size is not None:
 		w, h = parse_size(args.size)
 		settings.INTERNAL_WIDTH = w
 		settings.INTERNAL_HEIGHT = h
-	# Visible-tile override.
+	# Visible-tile override. Also drops TERRAIN_SCALE to 1 so the
+	# requested tile count renders at native pixels and fits the well.
+	# Rationale: each preset declares (visible_tiles, terrain_scale) as
+	# a *paired* default (e.g., remaster = 8 tiles at 2x chunky pixels);
+	# overriding the count alone with chunky scale on would push the
+	# diamond past the AmigaUI iso-hole boundary at any preset bigger
+	# than classic. Native-pixel tiles let the user trade visible-area
+	# for chunkiness via this one knob.
 	if args.visible_tiles is not None:
 		settings.VISIBLE_TILE_COUNT = int(args.visible_tiles)
+		settings.TERRAIN_SCALE = 1
+	# --debug-layout implies flat water + no peeps. The two debug
+	# knobs are complementary: --debug-layout draws diagnostic overlays
+	# and DEBUG_FLAT_WATER zeroes the heightmap so the iso-diamond
+	# shape is unambiguous against the AmigaUI HUD chrome. Coupling
+	# them here means the user passes one CLI flag instead of editing
+	# settings.py while debugging. Per docs/PYTHON_STYLE.md
+	# argparse-minimalism, no separate --flat-water flag is needed.
+	# getattr default keeps test_cli_overrides happy: it constructs a
+	# Namespace directly with only the preset/size/visible_tiles attrs.
+	if getattr(args, 'debug_layout', False):
+		settings.DEBUG_FLAT_WATER = True
 
 
 #============================================

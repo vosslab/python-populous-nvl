@@ -38,7 +38,12 @@ def load_sprite_surfaces():
             alpha[mask] = 0
             del arr, alpha  # liberer les locks surfarray
 
-            sub = pygame.transform.scale(sub, (settings.SPRITE_SIZE, settings.SPRITE_SIZE))
+            # Scale peep sprites by TERRAIN_SCALE so they match the
+            # iso tile size at every preset (chunky-pixels mode). At
+            # classic (TERRAIN_SCALE=1) this is the legacy 16x16; at
+            # remaster the peeps render at 32x32, at large 64x64.
+            target_size = settings.SPRITE_SIZE * settings.TERRAIN_SCALE
+            sub = pygame.transform.scale(sub, (target_size, target_size))
 
             sprites[(r, c)] = sub
 
@@ -138,7 +143,12 @@ class Peep:
             raise ValueError(f"Disallowed transition from {self.state} to {new_state}")
         self.state = new_state
 
-    def update(self, dt):
+    def update(self, dt, transform):
+        # transform is a populous_game.layout.ViewportTransform. The iso
+        # projection used for compass-facing selection routes through
+        # transform.world_to_screen_float so no iso pixel literals live
+        # in this method. All callers (game.py main loop, tests) must
+        # supply a transform.
         # Handle DEAD state: no updates
         if self.state == peep_state.PeepState.DEAD:
             self.death_timer += dt
@@ -236,11 +246,15 @@ class Peep:
             if self.state != peep_state.PeepState.DROWN:
                 self.transition(peep_state.PeepState.DROWN)
         elif self.is_moving:
-            # Projeter le deplacement grille vers l'espace ecran isometrique
-            # world_to_screen: sx = (c-r)*TILE_HALF_W, sy = (c+r)*TILE_HALF_H
-            # dx = deplacement en c, dy = deplacement en r
-            screen_dx = (dx - dy) * settings.TILE_HALF_W
-            screen_dy = (dx + dy) * settings.TILE_HALF_H
+            # Project the world-space movement delta into screen space
+            # via the ViewportTransform. Camera and altitude offsets are
+            # linear, so they cancel for a delta and we only need two
+            # projections of the same world point with and without the
+            # delta. dx is the col delta, dy is the row delta.
+            bx, by = transform.world_to_screen_float(self.y, self.x, 0)
+            ax, ay = transform.world_to_screen_float(self.y + dy, self.x + dx, 0)
+            screen_dx = ax - bx
+            screen_dy = ay - by
             angle = math.degrees(math.atan2(screen_dy, screen_dx)) % 360
             dirs = ['E', 'SE', 'S', 'SW', 'W', 'NW', 'N', 'NE']
             self.facing = dirs[int((angle + 22.5) / 45) % 8]
@@ -299,7 +313,18 @@ class Peep:
             return house
         return None
 
-    def draw(self, surface, cam_x=0, cam_y=0, show_debug=False, debug_font=None):
+    def draw(self, surface, transform, show_debug=False, debug_font=None):
+        # Iso projection flows through the supplied
+        # populous_game.layout.ViewportTransform; the transform owns the
+        # camera position so cam_x / cam_y are no longer parameters.
+        # Sprite-anchor offsets (centering rule, foot-to-corner shift)
+        # come from populous_game.sprite_geometry.SPRITE_ANCHORS so this
+        # method holds no per-sprite pixel literals beyond the drowning
+        # bobbing offset (animation, not iso geometry).
+        # Lazy import: sprite_geometry imports peeps at module load, so
+        # importing it at module top here would create a circular import.
+        import populous_game.sprite_geometry as sprite_geometry
+
         gr, gc = int(self.y), int(self.x)
         fx = self.x - gc  # fraction horizontale dans la tile
         fy = self.y - gr  # fraction verticale dans la tile
@@ -315,9 +340,13 @@ class Peep:
         else:
             alt = 0
 
-        sx, sy = self.game_map.world_to_screen(self.y, self.x, alt, cam_x, cam_y)
-        # Sol visuel : la coordonnee sy integre deja l'altitude (alt * 8)
-        ground_y = sy + settings.TILE_HALF_H
+        # Ground anchor (iso projection of the world corner under the peep).
+        sx, sy = transform.world_to_screen(self.y, self.x, alt)
+
+        # Anchor metadata (dy from corner to feet, centering convention).
+        # The meta key is selected by sprite_geometry; for now all peep
+        # states share 'peep_default'.
+        anchor_meta = sprite_geometry.SPRITE_ANCHORS[sprite_geometry._peep_anchor_key(self)]
 
         sprites = self.get_sprites()
         frames = WALK_FRAMES.get(self.facing, WALK_FRAMES['IDLE'])
@@ -332,10 +361,11 @@ class Peep:
         sprite = sprites.get(frame_key)
 
         if sprite is not None:
-            # Centrer le sprite sur la position
+            # Translate ground anchor + sprite size into top-left blit
+            # pixel via the shared sprite_geometry helper. No iso or
+            # centering literals appear in this method.
             sw, sh = sprite.get_size()
-            blit_x = sx - sw // 2
-            blit_y = ground_y - sh
+            blit_x, blit_y = sprite_geometry._apply_anchor((sx, sy), anchor_meta, (sw, sh))
             if self.dead:
                 # Teinter en rouge pour les morts
                 tinted = sprite.copy()
@@ -350,12 +380,20 @@ class Peep:
                 text_y = blit_y - 16
                 surface.blit(life_text, (text_x, text_y))
         else:
-            # Fallback : petit cercle
-            pygame.draw.circle(surface, (255, 220, 120), (sx, ground_y), 3)
+            # Fallback : petit cercle. Apply the same sprite-anchor
+            # rule via sprite_geometry so the fallback diamond sits
+            # where the real sprite would.
+            fb_w, fb_h = sprite_geometry.PEEP_FALLBACK_SIZE
+            blit_x, blit_y = sprite_geometry._apply_anchor((sx, sy), anchor_meta, (fb_w, fb_h))
+            # The drawn circle's center sits at the foot point so it
+            # visually replaces the bottom-aligned sprite.
+            cx = blit_x + fb_w // 2
+            cy = blit_y + fb_h
+            pygame.draw.circle(surface, (255, 220, 120), (cx, cy), 3)
             if show_debug and debug_font is not None:
                 life_text = debug_font.render(f"{int(self.life)}", True, (255,255,0))
-                text_x = sx - life_text.get_width() // 2
-                text_y = ground_y - 24
+                text_x = cx - life_text.get_width() // 2
+                text_y = cy - 24
                 surface.blit(life_text, (text_x, text_y))
 
     def is_removable(self):

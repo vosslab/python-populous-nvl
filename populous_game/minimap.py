@@ -28,68 +28,75 @@ class Minimap:
         # Effet de clignotement basé sur le temps (cycle de 0.5 seconde)
         blink = (pygame.time.get_ticks() % 500) > 250
 
-        # --- Rendu de la minimap (Moteur _draw_map) ---
-        # "Le code convertit les coordonnÃ©es tuiles (X, Y) en pixels-Ã©crans selon une formule :
-        # Y = (X_tuile + Y_tuile) / 2
-        # X = (X_tuile + 64) - Y_tuile"
+        # The minimap art is fixed-size in the AmigaUI sprite (the
+        # ~128x64 iso losange the original Amiga drew per-tile pixels
+        # into). To make it scale with the HUD at non-classic presets,
+        # we render every minimap pixel into a NATIVE-size scratch
+        # surface, then upscale that surface by HUD_SCALE and blit it
+        # at the scaled destination position. The pixel-projection
+        # math stays in native-logical coordinates so the existing
+        # iso losange formula (px = c + 64 - r, py = (c + r) // 2) is
+        # unchanged. This is the same trick the renderer uses for the
+        # AmigaUI HUD itself: render once at native size, scale once.
+        scale = settings.HUD_SCALE
+        scratch = pygame.Surface((self.width, self.height), pygame.SRCALPHA)
 
+        # Terrain pixels (one per (r, c) tile, iso-projected onto the
+        # scratch surface in native coords).
         for r in range(settings.GRID_HEIGHT):
             for c in range(settings.GRID_WIDTH):
                 a0 = game_map.get_corner_altitude(r, c)
                 a1 = game_map.get_corner_altitude(r, c + 1)
                 a2 = game_map.get_corner_altitude(r + 1, c + 1)
                 a3 = game_map.get_corner_altitude(r + 1, c)
-
-                # Vérifier si c'est de l'eau (tous les coins à 0 ou presque)
                 if a0 == 0 and a1 == 0 and a2 == 0 and a3 == 0:
-                    color = (0, 0, 200) # Bleu pour l'eau
+                    color = (0, 0, 200)
                 else:
-                    # Calcul du relief (pente) en comparant les altitudes opposées
-                    # La lumière vient généralement du haut/gauche dans les jeux isométriques
+                    # Slope shading: light comes from upper-left in iso.
                     slope = (a2 - a0) + (a1 - a3)
-
                     if slope > 0:
-                        color = (120, 200, 0)  # Vert clair (Pente éclairée)
+                        color = (120, 200, 0)
                     elif slope < 0:
-                        color = (0, 90, 0)     # Vert foncé (Pente ombragée)
+                        color = (0, 90, 0)
                     else:
-                        color = (0, 150, 0)    # Vert moyen (Plat)
+                        color = (0, 150, 0)
+                # Native-coords iso projection inside the scratch
+                # surface (no self.x / self.y here -- those are the
+                # destination offsets and are applied at blit time).
+                px = c + 64 - r
+                py = (c + r) // 2
+                scratch.set_at((px, py), color)
 
-                # Projection isométrique minimale (64 de décalage X de base, moité pour Y)
-                px = self.x + c + 64 - r
-                py = self.y + (c + r) // 2
-
-                # Dessiner le pixel (___pixel)
-                surface.set_at((px, py), color)
-
-        # Dessiner les maisons (blanc clignotant, disparait/transparent sinon)
+        # Houses blink white when on.
         if blink:
             for house in game_map.houses:
                 r, c = house.r, house.c
-                px = self.x + c + 64 - r
-                py = self.y + (c + r) // 2
-                surface.set_at((px, py), settings.WHITE)
-
-        # Dessiner les peeps (bleu clignotant)
-        if blink:
+                scratch.set_at((c + 64 - r, (c + r) // 2), settings.WHITE)
             for peep in peeps:
                 r_int, c_int = int(peep.y), int(peep.x)
                 if 0 <= r_int < settings.GRID_HEIGHT and 0 <= c_int < settings.GRID_WIDTH:
-                    px = self.x + c_int + 64 - r_int
-                    py = self.y + (c_int + r_int) // 2
-                    surface.set_at((px, py), settings.BLUE)
+                    scratch.set_at((c_int + 64 - r_int, (c_int + r_int) // 2), settings.BLUE)
 
-        # Dessiner le losange / focus de la caméra (vue de 8x8 tuiles)
+        # Camera viewport losange (the 8x8 tile region the player sees).
         r_cam = int(camera.r)
         c_cam = int(camera.c)
-        s = 8  # taille de la vue couverte
+        s = settings.VISIBLE_TILE_COUNT
+        p1 = (c_cam + 64 - r_cam, (c_cam + r_cam) // 2)
+        p2 = ((c_cam + s) + 64 - r_cam, ((c_cam + s) + r_cam) // 2)
+        p3 = ((c_cam + s) + 64 - (r_cam + s), ((c_cam + s) + (r_cam + s)) // 2)
+        p4 = (c_cam + 64 - (r_cam + s), (c_cam + (r_cam + s)) // 2)
+        pygame.draw.polygon(scratch, settings.WHITE, [p1, p2, p3, p4], 1)
 
-        p1 = (self.x + c_cam + 64 - r_cam, self.y + (c_cam + r_cam) // 2)                         # Haut
-        p2 = (self.x + (c_cam + s) + 64 - r_cam, self.y + ((c_cam + s) + r_cam) // 2)             # Droite
-        p3 = (self.x + (c_cam + s) + 64 - (r_cam + s), self.y + ((c_cam + s) + (r_cam + s)) // 2) # Bas
-        p4 = (self.x + c_cam + 64 - (r_cam + s), self.y + (c_cam + (r_cam + s)) // 2)             # Gauche
-
-        pygame.draw.polygon(surface, settings.WHITE, [p1, p2, p3, p4], 1)
+        # Upscale the native-size scratch surface to HUD_SCALE and
+        # blit at the destination position (also scaled). At classic
+        # (HUD_SCALE == 1) this is a no-op pixel copy.
+        if scale == 1:
+            surface.blit(scratch, (self.x, self.y))
+        else:
+            scaled = pygame.transform.scale(
+                scratch, (self.width * scale, self.height * scale)
+            )
+            surface.blit(scaled, (self.x * scale, self.y * scale))
 
     def handle_click(self, mouse_x, mouse_y, camera):
         # Vérifie si le clic est dans le bounding box de la minimap

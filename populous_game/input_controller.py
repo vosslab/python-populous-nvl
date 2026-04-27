@@ -229,7 +229,10 @@ class InputController:
 
 				# Handle state machine transitions
 				if self.game.app_state.is_menu():
-					if event.key == pygame.K_RETURN or event.key == pygame.K_SPACE:
+					# Menu hotkeys: N (new game), ENTER / SPACE (legacy
+					# start aliases). Q / ESC quit. Any left-click also
+					# starts a new game (see MOUSEBUTTONDOWN handler).
+					if event.key in (pygame.K_n, pygame.K_RETURN, pygame.K_SPACE):
 						# Start new game: keep the randomized mixed-terrain
 						# heightmap as generated. Spawn falls back to the
 						# nearest land corner via BFS when the random pick
@@ -359,15 +362,35 @@ class InputController:
 				mx, my = event.pos
 				mx //= self.game.display_scale
 				my //= self.game.display_scale
-				# (mx, my) are now in INTERNAL canvas pixel space
-				# (HUD_SCALE-multiplied). UI pieces -- minimap, ui_panel
-				# buttons, ui_panel.select_at -- read 320x200 logical
-				# coords, so build a logical copy by dividing by HUD_SCALE.
-				# Terrain math (view_rect, screen_to_nearest_corner) reads
-				# canvas-space directly because terrain.world_to_screen
-				# now operates in canvas pixels.
+				# Coord-space contract for this MOUSEBUTTONDOWN handler:
+				# there is one mouse-input flow with two coord-space
+				# paths chosen by *what* is being hit, not by re-deriving
+				# math.
+				#   * (mx, my)                    : canvas-pixel space
+				#                                   (HUD_SCALE-multiplied)
+				#   * (logical_mx, logical_my)    : 320x200 logical space
+				#
+				# The HUD reads logical 320x200 coords because the
+				# AmigaUI sprite is 320x200 in logical space; minimap,
+				# ui_panel.hit_test_button, and ui_panel.select_at all
+				# expect logical coords. Terrain hit-tests use canvas
+				# pixels directly because the active ViewportTransform
+				# owns the inverse projection from canvas pixels to
+				# (row, col); view_rect is also in canvas pixels.
 				logical_mx = mx // settings.HUD_SCALE
 				logical_my = my // settings.HUD_SCALE
+				# Mac trackpad ctrl+left-click compatibility. macOS
+				# convention is ctrl+click as a right-click substitute,
+				# but pygame reports it as button 1 with KMOD_CTRL set
+				# (not as button 3). Remap to button 3 for terrain-area
+				# interactions so trackpad users can lower terrain,
+				# cancel powers, and exit modes the same way two-button
+				# mouse users do. Menu / minimap / UI-button checks keep
+				# reading raw event.button so ctrl+click on the start
+				# page or on a HUD button behaves like a normal click.
+				terrain_button = event.button
+				if terrain_button == 1 and (pygame.key.get_mods() & pygame.KMOD_CTRL):
+					terrain_button = 3
 				# Check interaction minimap (if clicked on, no other action)
 				if event.button == 1 and self.game.minimap.handle_click(logical_mx, logical_my, self.game.camera):
 					continue
@@ -380,9 +403,10 @@ class InputController:
 						ui_clicked = True
 				if ui_clicked:
 					continue
-				# Shield mode: left-click on entity = apply coat-of-arms
+				# Shield mode: left-click on entity = apply coat-of-arms.
+				# Uses terrain_button so Mac trackpad ctrl+click cancels.
 				if self.game.mode_manager.shield_mode:
-					if event.button == 1:
+					if terrain_button == 1:
 						entity, kind = self.game.ui_panel.select_at(logical_mx, logical_my, self.game.peeps, self.game.game_map.houses, self.game.camera, self.game.game_map)
 						if entity is not None:
 							self.game.selection.who = entity
@@ -390,7 +414,7 @@ class InputController:
 							self.game.mode_manager.shield_target = entity
 							self.game.mode_manager.shield_mode = False
 						return True
-					elif event.button == 3:
+					elif terrain_button == 3:
 						# Cancel shield mode and return to raise_terrain
 						self.game.mode_manager.shield_mode = False
 						self._handle_ui_click('_raise_terrain', held=False)
@@ -401,16 +425,18 @@ class InputController:
 				#     continue
 				# Mouse clicks (allowed everywhere since viewport is fullscreen)
 				if self.game.view_rect.collidepoint(mx, my):
-					vp_x = mx - self.game.view_rect.x
-					vp_y = my - self.game.view_rect.y
-					r, c = self.game.game_map.screen_to_nearest_corner(
-						vp_x, vp_y, self.game.camera.r, self.game.camera.c
-					)
+					# Project the click through the active viewport
+					# transform; round each axis to land on the nearest
+					# integer corner (matches the legacy
+					# screen_to_nearest_corner semantics).
+					rf, cf = self.game.viewport_transform.screen_to_world(mx, my)
+					r = int(round(rf))
+					c = int(round(cf))
 					# Verify click is in the visible 8x8 camera zone
 					start_r, end_r, start_c, end_c = self.game.game_map.get_visible_bounds(self.game.camera.r, self.game.camera.c)
 					if start_r <= r <= end_r and start_c <= c <= end_c:
 						if self.game.mode_manager.pending_power:
-							if event.button == 1:
+							if terrain_button == 1:
 								# Activate pending power at target
 								power_name = self.game.mode_manager.pending_power
 								power_spec = powers.POWERS.get(power_name)
@@ -428,30 +454,37 @@ class InputController:
 									# Activate immediately
 									self.game.power_manager.activate(power_name, (r, c))
 								self.game.mode_manager.pending_power = None
-							elif event.button == 3:
+							elif terrain_button == 3:
 								# Cancel pending power
 								self.game.mode_manager.pending_power = None
 								self._handle_ui_click('_raise_terrain', held=False)
 							return True
 						elif self.game.mode_manager.papal_mode:
-							if event.button == 1:
+							if terrain_button == 1:
 								# Place/move papal (only one) on the NW case
 								self.game.mode_manager.papal_position = (max(r - 1, 0), max(c - 1, 0))
 								self.game.mode_manager.papal_mode = False  # Deactivate mode after click
-							elif event.button == 3:
+							elif terrain_button == 3:
 								# Cancel papal mode and return to raise_terrain
 								self.game.mode_manager.papal_mode = False
 								self._handle_ui_click('_raise_terrain', held=False)
 							return True
 						elif not self.game.mode_manager.papal_mode and not self.game.mode_manager.shield_mode:
-							if event.button == 1:
+							# Initial click fires one paint immediately, then
+							# drag-paint waits DRAG_PAINT_INITIAL_DELAY before
+							# auto-repeating. After that, paints happen every
+							# DRAG_PAINT_INTERVAL. Bias the next-fire timestamp
+							# so a normal click (under the initial delay) does
+							# not register as multiple paints.
+							grace = settings.DRAG_PAINT_INITIAL_DELAY - settings.DRAG_PAINT_INTERVAL
+							if terrain_button == 1:
 								self.game.game_map.raise_corner(r, c)
 								self._drag_paint_button = 1
-								self._drag_paint_last_time = time.time()
-							elif event.button == 3:
+								self._drag_paint_last_time = time.time() + grace
+							elif terrain_button == 3:
 								self.game.game_map.lower_corner(r, c)
 								self._drag_paint_button = 3
-								self._drag_paint_last_time = time.time()
+								self._drag_paint_last_time = time.time() + grace
 			elif event.type == pygame.MOUSEBUTTONUP:
 				# Click release: stop continuous scroll and drag-paint
 				self.game.mode_manager.dpad_held_direction = None
@@ -481,11 +514,12 @@ class InputController:
 		my //= self.game.display_scale
 		if not self.game.view_rect.collidepoint(mx, my):
 			return
-		vp_x = mx - self.game.view_rect.x
-		vp_y = my - self.game.view_rect.y
-		r, c = self.game.game_map.screen_to_nearest_corner(
-			vp_x, vp_y, self.game.camera.r, self.game.camera.c
-		)
+		# Project drag-paint pointer through the active viewport
+		# transform; round each axis to land on the nearest integer
+		# corner.
+		rf, cf = self.game.viewport_transform.screen_to_world(mx, my)
+		r = int(round(rf))
+		c = int(round(cf))
 		start_r, end_r, start_c, end_c = self.game.game_map.get_visible_bounds(
 			self.game.camera.r, self.game.camera.c
 		)
