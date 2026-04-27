@@ -1,0 +1,14 @@
+# Scenario 1: Plateau (Easy)
+# A flat plateau, modest faction sizes, learn the controls.
+
+format_version: 1
+name: "Plateau"
+seed: 12345
+altitude: 3
+player:
+    peeps: 10
+enemy:
+    peeps: 5
+mana:
+    initial: 100.0
+password: "AAAJSCB"

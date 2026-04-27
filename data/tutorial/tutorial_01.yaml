@@ -1,0 +1,32 @@
+# Tutorial 1: First steps
+# Walks the player through the basic controls in scenario 1.
+
+format_version: 1
+scenario: scenario_01_plateau
+
+steps:
+    - title: "Welcome"
+      body: |
+        Welcome to Populous (remaster). Your peeps will appear shortly.
+        This tutorial covers the basic controls. Press Space to advance.
+
+    - title: "Scrolling the map"
+      body: |
+        Use the eight directional buttons in the bottom-left of the
+        compass panel to scroll the viewport. You can also click and
+        drag on the minimap (bottom-right) to recenter the view.
+
+    - title: "Raising and lowering terrain"
+      body: |
+        Left-click on a tile in the viewport to raise it. Right-click
+        to lower it. Hold and drag to paint a region in one motion.
+
+    - title: "Powers"
+      body: |
+        The power buttons are arrayed around the central icon. Hover
+        any button to see its tooltip and mana cost. Press P, V, F, Q,
+        S, or K as keyboard shortcuts.
+
+    - title: "Goal"
+      body: |
+        Eliminate all enemy peeps and houses to win. Have fun!

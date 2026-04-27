@@ -1,11 +1,11 @@
 import pygame
 import random
-from settings import *
+import populous_game.settings as settings
 
 
 def load_tile_surfaces():
     """Charge le tileset et découpe chaque tile en surface pygame."""
-    sheet_raw = pygame.image.load(TILES_PATH).convert()
+    sheet_raw = pygame.image.load(settings.TILES_PATH).convert()
     sheet_raw.set_colorkey((0, 49, 0))  # Transparence pour le fond vert des tiles Amiga
     sheet = sheet_raw.convert_alpha()
 
@@ -68,7 +68,7 @@ class GameMap:
 
     def set_corner_altitude(self, r, c, value):
         if 0 <= r <= self.grid_height and 0 <= c <= self.grid_width:
-            clamped = max(ALTITUDE_MIN, min(value, ALTITUDE_MAX))
+            clamped = max(settings.ALTITUDE_MIN, min(value, settings.ALTITUDE_MAX))
             if self.corners[r][c] != clamped:
                 self.corners[r][c] = clamped
                 return True
@@ -77,9 +77,9 @@ class GameMap:
     def world_to_screen(self, r, c, altitude, cam_r=0, cam_c=0):
         local_r = r - cam_r
         local_c = c - cam_c
-        sx = MAP_OFFSET_X + (local_c - local_r) * TILE_HALF_W
-        elev = altitude * TILE_HALF_H  # Incrément strict de 8 pixels par niveau
-        sy = MAP_OFFSET_Y + (local_c + local_r) * TILE_HALF_H - elev
+        sx = settings.MAP_OFFSET_X + (local_c - local_r) * settings.TILE_HALF_W
+        elev = altitude * settings.TILE_HALF_H  # Incrément strict de 8 pixels par niveau
+        sy = settings.MAP_OFFSET_Y + (local_c + local_r) * settings.TILE_HALF_H - elev
         return int(sx), int(sy)
 
     def screen_to_nearest_corner(self, sx, sy, cam_r=0, cam_c=0):
@@ -97,7 +97,7 @@ class GameMap:
 
                 # Le centre de gravité visuel de l'intersection de la grille isométrique
                 # est décalé vers le bas de TILE_HALF_H (8 pixels) par rapport au top
-                target_y = py + TILE_HALF_H
+                target_y = py + settings.TILE_HALF_H
 
                 # Prendre en compte le ratio isométrique (2:1) pour la forme de la zone de clic
                 d = (sx - px) ** 2 + ((sy - target_y) * 2) ** 2
@@ -167,7 +167,7 @@ class GameMap:
         min_alt = min(a0, a1, a2, a3)
 
         if a0 == a1 == a2 == a3 == 0:
-            return TILE_WATER if self.water_frame == 0 else TILE_WATER_2
+            return settings.TILE_WATER if self.water_frame == 0 else settings.TILE_WATER_2
 
         d = (
             min(1, a0 - min_alt),
@@ -177,15 +177,15 @@ class GameMap:
         )
 
         if min_alt == 0:
-            tile_map = SLOPE_TILES_LOW
+            tile_map = settings.SLOPE_TILES_LOW
         else:
-            tile_map = SLOPE_TILES
+            tile_map = settings.SLOPE_TILES
 
-        tile = tile_map.get(d, TILE_FLAT)
-        if tile == TILE_FLAT:
+        tile = tile_map.get(d, settings.TILE_FLAT)
+        if tile == settings.TILE_FLAT:
             for h in self.houses:
-                if (r, c) in getattr(h, 'occupied_tiles', []):
-                    return TILE_CONSTRUCTED
+                if (r, c) in h.occupied_tiles:
+                    return settings.TILE_CONSTRUCTED
         return tile
 
     def draw_tile(self, surface, r, c, cam_r=0, cam_c=0):
@@ -203,9 +203,9 @@ class GameMap:
         # Le point world_to_screen(r, c, alt) donne le coin NW (sommet haut du losange)
         # Le tile doit être positionné pour que le sommet haut du losange soit centré horizontalement
         sx, sy = self.world_to_screen(r, c, min_alt, cam_r, cam_c)
-        blit_x = sx - TILE_HALF_W
-        if tile_key == TILE_FLAT or tile_key == TILE_CONSTRUCTED:
-            blit_y = sy + TILE_HALF_H  # Décale de 8 pixels vers le bas pour les tiles plates
+        blit_x = sx - settings.TILE_HALF_W
+        if tile_key == settings.TILE_FLAT or tile_key == settings.TILE_CONSTRUCTED:
+            blit_y = sy + settings.TILE_HALF_H  # Décale de 8 pixels vers le bas pour les tiles plates
         else:
             blit_y = sy
 
@@ -213,17 +213,16 @@ class GameMap:
         # gap = distance en pixels entre blit_y et le niveau de sol de référence (alt=0)
         _, sy0 = self.world_to_screen(r, c, 0, cam_r, cam_c)
         gap = sy0 - blit_y
-        n_copies = gap // TILE_HALF_H
+        n_copies = gap // settings.TILE_HALF_H
         if n_copies > 0:
-            flat_surf = self.tile_surfaces.get(TILE_FLAT)
+            flat_surf = self.tile_surfaces.get(settings.TILE_FLAT)
             if flat_surf is not None:
                 for k in range(n_copies, 0, -1):  # du bas vers le haut
-                    surface.blit(flat_surf, (blit_x, blit_y + k * TILE_HALF_H))
+                    surface.blit(flat_surf, (blit_x, blit_y + k * settings.TILE_HALF_H))
 
         surface.blit(tile_surf, (blit_x, blit_y))
 
     def screen_to_grid(self, sx, sy, cam_r=0, cam_c=0):
-        import settings
         X = sx - settings.MAP_OFFSET_X
         Y = sy - settings.MAP_OFFSET_Y
 
@@ -286,7 +285,7 @@ class GameMap:
         end_r = min(self.grid_height, start_r + 8)
         end_c = min(self.grid_width, start_c + 8)
 
-        from peep import Peep
+        from populous_game.peeps import Peep
         peep_sprites = Peep.get_sprites()
         flag_surf = peep_sprites.get((4, self.flag_frame))
 
@@ -295,21 +294,21 @@ class GameMap:
                 continue
 
             if house.building_type == 'castle':
-                from settings import CASTLE_9_TILES
                 offsets = [
-                    (0, 0, CASTLE_9_TILES['center']), (-1, -1, CASTLE_9_TILES['corner']),     (-1, 0, CASTLE_9_TILES['side_tb']),     (-1, 1, CASTLE_9_TILES['corner']),
-                    (0, -1, CASTLE_9_TILES['side_lr']),            (0, 1, CASTLE_9_TILES['side_lr']),
-                    (1, -1, CASTLE_9_TILES['corner']),      (1, 0, CASTLE_9_TILES['side_tb']),      (1, 1, CASTLE_9_TILES['corner'])
+                    (0, 0, settings.CASTLE_9_TILES['center']), (-1, -1, settings.CASTLE_9_TILES['corner']),     (-1, 0, settings.CASTLE_9_TILES['side_tb']),     (-1, 1, settings.CASTLE_9_TILES['corner']),
+                    (0, -1, settings.CASTLE_9_TILES['side_lr']),            (0, 1, settings.CASTLE_9_TILES['side_lr']),
+                    (1, -1, settings.CASTLE_9_TILES['corner']),      (1, 0, settings.CASTLE_9_TILES['side_tb']),      (1, 1, settings.CASTLE_9_TILES['corner'])
                 ]
                 offsets.sort(key=lambda x: (house.r + x[0]) + (house.c + x[1]))
                 for dr, dc, tile_key in offsets:
                     nr, nc = house.r + dr, house.c + dc
-                    if 0 <= nr < self.grid_height and 0 <= nc < self.grid_width:
+                    # Only draw castle tiles that are within visible bounds
+                    if start_r <= nr < end_r and start_c <= nc < end_c:
                         alt = self.get_corner_altitude(nr, nc)
                         tile_surf = self.tile_surfaces.get(tile_key)
                         if tile_surf is not None:
                             sx, sy = self.world_to_screen(nr, nc, alt, cam_r, cam_c)
-                            surface.blit(tile_surf, (sx - TILE_HALF_W, sy))
+                            surface.blit(tile_surf, (sx - settings.TILE_HALF_W, sy))
                 if flag_surf is not None:
                     sx, sy = self.world_to_screen(house.r, house.c, self.get_corner_altitude(house.r, house.c), cam_r, cam_c)
                     surface.blit(flag_surf, (sx, sy))
@@ -323,18 +322,18 @@ class GameMap:
                 continue
 
             alt = self.get_corner_altitude(house.r, house.c)
-            tile_key = BUILDING_TILES.get(house.building_type, BUILDING_TILES["hut"])
+            tile_key = settings.BUILDING_TILES.get(house.building_type, settings.BUILDING_TILES["hut"])
             tile_surf = self.tile_surfaces.get(tile_key)
             if tile_surf is None:
                 continue
             sx, sy = self.world_to_screen(house.r, house.c, alt, cam_r, cam_c)
-            blit_x = sx - TILE_HALF_W
+            blit_x = sx - settings.TILE_HALF_W
             blit_y = sy
             surface.blit(tile_surf, (blit_x, blit_y))
 
             # Drapeau d'équipe animé (sprites 4,0 et 4,1)
             if flag_surf is not None:
-                flag_x = blit_x + TILE_HALF_W
+                flag_x = blit_x + settings.TILE_HALF_W
                 flag_y = blit_y
                 surface.blit(flag_surf, (flag_x, flag_y))
 
@@ -391,7 +390,7 @@ class GameMap:
         if a == b == c_ == d and a > 0:
             # Vérifier qu'aucune maison ne réclame déjà cette tuile
             for h in self.houses:
-                if (r, c) in getattr(h, 'occupied_tiles', []):
+                if (r, c) in h.occupied_tiles:
                     return False
             return True
         return False
@@ -425,7 +424,7 @@ class GameMap:
 
             # Interdit aussi si la case est déjà revendiquée par une ville existante.
             for h in self.houses:
-                if (nr, nc) in getattr(h, 'occupied_tiles', []):
+                if (nr, nc) in h.occupied_tiles:
                     return False
 
         return True

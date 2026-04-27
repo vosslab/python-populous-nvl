@@ -1,14 +1,25 @@
 import pygame
-from settings import GRID_WIDTH, GRID_HEIGHT, BLACK, WHITE, RED, GREEN, BLUE
+import populous_game.settings as settings
 
 class Minimap:
     def __init__(self, x=10, y=10):
         # Position of the minimap on the screen
         self.x = x
         self.y = y
-        self.width = GRID_WIDTH + GRID_HEIGHT  # Losange width = 64 + 64 = 128
-        self.height = (GRID_WIDTH + GRID_HEIGHT) // 2  # Losange height = 64
+        self.width = settings.GRID_WIDTH + settings.GRID_HEIGHT  # Losange width = 64 + 64 = 128
+        self.height = (settings.GRID_WIDTH + settings.GRID_HEIGHT) // 2  # Losange height = 64
         self.rect = pygame.Rect(self.x, self.y, self.width, self.height)
+        # UI-only zoom factor (does not affect simulation). Adjusted by the
+        # mouse wheel when the cursor is over the minimap.
+        self.zoom: float = settings.MINIMAP_ZOOM_DEFAULT
+
+    def set_zoom(self, z: float) -> None:
+        """Clamp and set the minimap zoom factor."""
+        if z < settings.MINIMAP_ZOOM_MIN:
+            z = settings.MINIMAP_ZOOM_MIN
+        if z > settings.MINIMAP_ZOOM_MAX:
+            z = settings.MINIMAP_ZOOM_MAX
+        self.zoom = float(z)
 
     def draw(self, surface, game_map, camera, peeps=None):
         if peeps is None:
@@ -22,8 +33,8 @@ class Minimap:
         # Y = (X_tuile + Y_tuile) / 2
         # X = (X_tuile + 64) - Y_tuile"
 
-        for r in range(GRID_HEIGHT):
-            for c in range(GRID_WIDTH):
+        for r in range(settings.GRID_HEIGHT):
+            for c in range(settings.GRID_WIDTH):
                 a0 = game_map.get_corner_altitude(r, c)
                 a1 = game_map.get_corner_altitude(r, c + 1)
                 a2 = game_map.get_corner_altitude(r + 1, c + 1)
@@ -57,16 +68,16 @@ class Minimap:
                 r, c = house.r, house.c
                 px = self.x + c + 64 - r
                 py = self.y + (c + r) // 2
-                surface.set_at((px, py), WHITE)
+                surface.set_at((px, py), settings.WHITE)
 
         # Dessiner les peeps (bleu clignotant)
         if blink:
             for peep in peeps:
                 r_int, c_int = int(peep.y), int(peep.x)
-                if 0 <= r_int < GRID_HEIGHT and 0 <= c_int < GRID_WIDTH:
+                if 0 <= r_int < settings.GRID_HEIGHT and 0 <= c_int < settings.GRID_WIDTH:
                     px = self.x + c_int + 64 - r_int
                     py = self.y + (c_int + r_int) // 2
-                    surface.set_at((px, py), BLUE)
+                    surface.set_at((px, py), settings.BLUE)
 
         # Dessiner le losange / focus de la caméra (vue de 8x8 tuiles)
         r_cam = int(camera.r)
@@ -78,7 +89,7 @@ class Minimap:
         p3 = (self.x + (c_cam + s) + 64 - (r_cam + s), self.y + ((c_cam + s) + (r_cam + s)) // 2) # Bas
         p4 = (self.x + c_cam + 64 - (r_cam + s), self.y + (c_cam + (r_cam + s)) // 2)             # Gauche
 
-        pygame.draw.polygon(surface, WHITE, [p1, p2, p3, p4], 1)
+        pygame.draw.polygon(surface, settings.WHITE, [p1, p2, p3, p4], 1)
 
     def handle_click(self, mouse_x, mouse_y, camera):
         # Vérifie si le clic est dans le bounding box de la minimap

@@ -5,7 +5,7 @@ Ce document detaille les routines cles identifiees dans le code assembleur d'ori
 ## 1. Moteur de Terrain et Modelisation (Map & Sculpt)
 La gestion de la carte isometrique repose sur une grille d'altitudes ou chaque vertice est modifiable.
 *   **`_make_map`, `_clear_map`, `_make_alt`, `_make_level`** : Ces fonctions generent la carte initiale. Le monde est genere de maniere procedurale a partir d'un "seed" (paysage de la Genese). Elles initialisent la matrice des altitudes et la remplissent de terre ou d'eau.
-*   **`_raise_point`, `_lower_point` (et wrappers `_do_raise...`)** : La mecanique cœur du gameplay. Lorsqu'un joueur clique, l'altitude d'un point est modifiee de +/-1. L'algorithme verifie ensuite recursivement les 8 points voisins. Si la difference d'altitude depasse 1 (regle des pentes douces d'un cran maximum), les points voisins sont egalement ajustes en cascade ("propagate" effect).
+*   **`_raise_point`, `_lower_point` (et wrappers `_do_raise...`)** : La mecanique coeur du gameplay. Lorsqu'un joueur clique, l'altitude d'un point est modifiee de +/-1. L'algorithme verifie ensuite recursivement les 8 points voisins. Si la difference d'altitude depasse 1 (regle des pentes douces d'un cran maximum), les points voisins sont egalement ajustes en cascade ("propagate" effect).
 *   **`_sculpt`, `_mod_map`, `_draw_map`, `_zoom_map`** : Le moteur de rendu. L'Amiga manquait de puissance pour tout redessiner a chaque frame : `_mod_map` gere une technique de 'Dirty Region' pour ne rafraichir que les tuiles nouvellement modifiees. `_zoom_map` ajuste le rendu pour basculer la vue en livre ouvert typique (macro vs micro).
 
 ## 2. Comportement des Habitants (Peeps & Population)

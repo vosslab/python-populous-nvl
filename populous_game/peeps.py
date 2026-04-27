@@ -1,15 +1,17 @@
 import pygame
-import numpy as np
 import random
 import math
-from settings import *
+import populous_game.settings as settings
+import populous_game.faction as faction
+import populous_game.peep_state as peep_state
 
-SPRITE_EXTRACT_SIZE = 16  # Taille dans le spritesheet source
+# Sprite size in the source sprite sheet
+SPRITE_EXTRACT_SIZE = 16
 
 
 def load_sprite_surfaces():
     """Charge le sprite sheet et decoupe les sprites 16x16 selon un format fixe (AmigaSprites)."""
-    sheet_raw = pygame.image.load(SPRITES_PATH).convert()
+    sheet_raw = pygame.image.load(settings.SPRITES_PATH).convert()
 
     # Fond vert transparent Amiga
     sheet_raw.set_colorkey((0, 49, 0))
@@ -36,7 +38,7 @@ def load_sprite_surfaces():
             alpha[mask] = 0
             del arr, alpha  # liberer les locks surfarray
 
-            sub = pygame.transform.scale(sub, (SPRITE_SIZE, SPRITE_SIZE))
+            sub = pygame.transform.scale(sub, (settings.SPRITE_SIZE, settings.SPRITE_SIZE))
 
             sprites[(r, c)] = sub
 
@@ -79,10 +81,12 @@ class Peep:
             cls._sprites = load_sprite_surfaces()
         return cls._sprites
 
-    def __init__(self, grid_r, grid_c, game_map):
+    def __init__(self, grid_r, grid_c, game_map, faction_id: int = faction.Faction.PLAYER):
         self.x = grid_c + 0.5
         self.y = grid_r + 0.5
         self.game_map = game_map
+        self.faction = faction_id
+        self.faction_id = faction_id
         self.life = 50
         self.dead = False
         self.death_timer = 0.0
@@ -98,8 +102,55 @@ class Peep:
         self.energy_orange = 1.0  # fraction de la barre orange courante (0->1)
         self.in_house = False
         self.weapon_type = 'hut' # Arme de depart : arme 0 (hut)
+        self.state: str = peep_state.PeepState.IDLE
+
+    #============================================
+    # State machine transitions (per asm/PEEPS_REPORT.md)
+    #============================================
+
+    # DEAD is implicitly reachable from every non-DEAD state (death by absorption,
+    # combat, drown, life cap, or merge). The transition() method allows
+    # state -> DEAD universally; this matrix only constrains non-terminal moves.
+    _ALLOWED_TRANSITIONS: dict = {
+        peep_state.PeepState.IDLE: {peep_state.PeepState.WANDER, peep_state.PeepState.SEEK_FLAT, peep_state.PeepState.JOIN_FORCES, peep_state.PeepState.FIGHT, peep_state.PeepState.DROWN},
+        peep_state.PeepState.WANDER: {peep_state.PeepState.IDLE, peep_state.PeepState.SEEK_FLAT, peep_state.PeepState.BUILD, peep_state.PeepState.JOIN_FORCES, peep_state.PeepState.MARCH, peep_state.PeepState.FIGHT, peep_state.PeepState.DROWN},
+        peep_state.PeepState.SEEK_FLAT: {peep_state.PeepState.IDLE, peep_state.PeepState.WANDER, peep_state.PeepState.BUILD, peep_state.PeepState.DROWN},
+        peep_state.PeepState.BUILD: {peep_state.PeepState.IDLE, peep_state.PeepState.WANDER, peep_state.PeepState.DROWN},
+        peep_state.PeepState.GATHER: {peep_state.PeepState.IDLE, peep_state.PeepState.WANDER, peep_state.PeepState.MARCH, peep_state.PeepState.JOIN_FORCES, peep_state.PeepState.DROWN},
+        peep_state.PeepState.JOIN_FORCES: {peep_state.PeepState.MARCH, peep_state.PeepState.FIGHT, peep_state.PeepState.IDLE, peep_state.PeepState.DROWN},
+        peep_state.PeepState.MARCH: {peep_state.PeepState.FIGHT, peep_state.PeepState.JOIN_FORCES, peep_state.PeepState.IDLE, peep_state.PeepState.DROWN},
+        peep_state.PeepState.FIGHT: {peep_state.PeepState.IDLE, peep_state.PeepState.MARCH, peep_state.PeepState.DROWN},
+        peep_state.PeepState.DROWN: set(),
+        peep_state.PeepState.DEAD: set(),
+    }
+
+    def transition(self, new_state: str) -> None:
+        """Validate and execute a state transition. Raises ValueError on disallowed transitions."""
+        if new_state not in peep_state.PeepState.ALL:
+            raise ValueError(f"Invalid state: {new_state}")
+        # DEAD is universally reachable from any non-DEAD state.
+        if new_state == peep_state.PeepState.DEAD:
+            self.state = new_state
+            return
+        if self.state == peep_state.PeepState.DEAD:
+            raise ValueError(f"Disallowed transition from DEAD to {new_state}")
+        if new_state not in self._ALLOWED_TRANSITIONS.get(self.state, set()):
+            raise ValueError(f"Disallowed transition from {self.state} to {new_state}")
+        self.state = new_state
 
     def update(self, dt):
+        # Handle DEAD state: no updates
+        if self.state == peep_state.PeepState.DEAD:
+            self.death_timer += dt
+            return
+
+        # Handle DROWN state: advance drowning animation and transition to DEAD when animation completes
+        if self.state == peep_state.PeepState.DROWN:
+            self.death_timer += dt
+            if self.death_timer > 1.0:
+                self.transition(peep_state.PeepState.DEAD)
+            return
+
         if self.dead:
             self.death_timer += dt
             return
@@ -109,6 +160,7 @@ class Peep:
         if self.life <= 0:
             self.life = 0
             self.dead = True
+            self.transition(peep_state.PeepState.DEAD)
             return
 
         self.anim_timer += dt
@@ -145,7 +197,7 @@ class Peep:
             self.direction = random.uniform(0, 2 * math.pi)
 
         # Deplacement
-        speed = PEEP_SPEED * dt / 64.0  # Normaliser par rapport a la taille du tile
+        speed = settings.PEEP_SPEED * dt / 64.0  # Normaliser par rapport a la taille du tile
         dx = math.cos(self.direction) * speed
         dy = math.sin(self.direction) * speed
 
@@ -181,12 +233,14 @@ class Peep:
         # Mettre a jour la direction visuelle (8 directions)
         if on_water:
             self.facing = 'DROWN'
+            if self.state != peep_state.PeepState.DROWN:
+                self.transition(peep_state.PeepState.DROWN)
         elif self.is_moving:
             # Projeter le deplacement grille vers l'espace ecran isometrique
             # world_to_screen: sx = (c-r)*TILE_HALF_W, sy = (c+r)*TILE_HALF_H
             # dx = deplacement en c, dy = deplacement en r
-            screen_dx = (dx - dy) * TILE_HALF_W
-            screen_dy = (dx + dy) * TILE_HALF_H
+            screen_dx = (dx - dy) * settings.TILE_HALF_W
+            screen_dy = (dx + dy) * settings.TILE_HALF_H
             angle = math.degrees(math.atan2(screen_dy, screen_dx)) % 360
             dirs = ['E', 'SE', 'S', 'SW', 'W', 'NW', 'N', 'NE']
             self.facing = dirs[int((angle + 22.5) / 45) % 8]
@@ -203,11 +257,10 @@ class Peep:
         gr, gc = int(self.y), int(self.x)
         if self.game_map.can_place_house_initial(gr, gc):
             self.build_timer = 0.0
-            from house import House
-            # On determine la vie max du batiment
-            from house import House
-            max_life = House.MAX_HEALTHS[0]  # hut par defaut
-            # On estime le type de batiment selon le terrain
+            from populous_game.houses import House
+            # Determine max life of the building (hut by default)
+            max_life = House.MAX_HEALTHS[0]
+            # Estimate building type from terrain
             score, valid_tiles = self.game_map.get_flat_area_score(gr, gc, current_house=None)
             thresholds = [0, 1, 2, 5, 8, 11, 14, 19, 22, 24]
             max_tier = 0
@@ -219,11 +272,13 @@ class Peep:
 
             # Si le peep a plus de vie que la vie max du batiment, on genere un peep avec l'excedent
             excess_life = self.life - max_life
-            house = House(gr, gc, life=min(self.life, max_life))
+            house = House(gr, gc, life=min(self.life, max_life), faction_id=self.faction)
             self.game_map.add_house(house)
             self.in_house = True
             self.life = 0
             self.dead = True
+            # Peep becomes a house, so set state directly without transition validation
+            self.state = peep_state.PeepState.DEAD
 
             if excess_life > 0:
                 # Cherche une case adjacente libre pour le peep excedentaire
@@ -233,11 +288,11 @@ class Peep:
                     if 0 <= nr < self.game_map.grid_height and 0 <= nc < self.game_map.grid_width:
                         # On verifie que la case n'est pas de l'eau et pas deja occupee par une maison
                         alt = self.game_map.get_corner_altitude(nr, nc)
-                        occupied = any((nr, nc) in getattr(h, 'occupied_tiles', []) for h in self.game_map.houses)
+                        occupied = any((nr, nc) in h.occupied_tiles for h in self.game_map.houses)
                         if alt > 0 and not occupied:
-                            from peep import Peep
-                            new_peep = Peep(nr, nc, self.game_map)
+                            new_peep = Peep(nr, nc, self.game_map, faction_id=self.faction)
                             new_peep.life = excess_life
+                            # _pending_peep is optional; initialized only when peeps exceed house capacity
                             self.game_map._pending_peep = getattr(self.game_map, '_pending_peep', [])
                             self.game_map._pending_peep.append(new_peep)
                             break
@@ -262,7 +317,7 @@ class Peep:
 
         sx, sy = self.game_map.world_to_screen(self.y, self.x, alt, cam_x, cam_y)
         # Sol visuel : la coordonnee sy integre deja l'altitude (alt * 8)
-        ground_y = sy + TILE_HALF_H
+        ground_y = sy + settings.TILE_HALF_H
 
         sprites = self.get_sprites()
         frames = WALK_FRAMES.get(self.facing, WALK_FRAMES['IDLE'])

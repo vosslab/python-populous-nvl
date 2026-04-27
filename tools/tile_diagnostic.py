@@ -1,6 +1,6 @@
 """
-Diagnostic des tiles - Génère une image de référence avec les labels de mapping.
-Affiche chaque tile avec sa position (row, col) et ce à quoi il est mappé.
+Tile diagnostic - generates reference image with mapping labels.
+Displays each tile with its position (row, col) and what it maps to.
 Usage: python tile_diagnostic.py
 """
 
@@ -9,11 +9,11 @@ import sys
 import os
 sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), '..')))
 import pygame
-from settings import *
+import populous_game.settings as settings
 
 
 def _format_slope_label(prefix, dA, dB, dC, dD):
-    """Formate un label de pente avec le préfixe (SLOPE/LOW), le delta et les coins."""
+    """Format slope label with prefix (SLOPE/LOW), delta, and corners."""
     corners = ["NW", "NE", "SE", "SW"]
     deltas = [dA, dB, dC, dD]
     up = [c for c, d in zip(corners, deltas) if d]
@@ -31,46 +31,46 @@ def _format_slope_label(prefix, dA, dB, dC, dD):
 
 
 def get_tile_label(row, col):
-    """Retourne le label de mapping pour un tile donné."""
+    """Return mapping label for a given tile."""
     labels = []
 
-    if (row, col) == TILE_WATER:
+    if (row, col) == settings.TILE_WATER:
         labels.append("WATER")
-    if (row, col) == TILE_WATER_2:
+    if (row, col) == settings.TILE_WATER_2:
         labels.append("WATER#2")
-    if (row, col) == TILE_FLAT:
+    if (row, col) == settings.TILE_FLAT:
         labels.append("FLAT")
 
     # SLOPE_TILES
-    for delta, pos in SLOPE_TILES.items():
+    for delta, pos in settings.SLOPE_TILES.items():
         if pos == (row, col):
             dA, dB, dC, dD = delta
             desc = _format_slope_label("SLOPE", dA, dB, dC, dD)
             labels.append(desc)
 
     # SLOPE_TILES_LOW
-    for delta, pos in SLOPE_TILES_LOW.items():
+    for delta, pos in settings.SLOPE_TILES_LOW.items():
         if pos == (row, col):
             dA, dB, dC, dD = delta
             desc = _format_slope_label("LOW", dA, dB, dC, dD)
             labels.append(desc)
 
     # BUILDING_TILES
-    for name, pos in BUILDING_TILES.items():
+    for name, pos in settings.BUILDING_TILES.items():
         if pos == (row, col):
             labels.append(f"BUILD:{name}")
 
     # CASTLE_9_TILES
-    for name, pos in CASTLE_9_TILES.items():
+    for name, pos in settings.CASTLE_9_TILES.items():
         if pos == (row, col):
             labels.append(f"CASTLE9:{name}")
 
     # OBJECT_TILES
-    for name, pos in OBJECT_TILES.items():
+    for name, pos in settings.OBJECT_TILES.items():
         if pos == (row, col):
             labels.append(f"OBJ:{name}")
 
-    return labels if labels else ["(non mappé)"]
+    return labels if labels else ["(unmapped)"]
 
 
 def load_and_draw_tiles(screen, image_name, args):
@@ -78,17 +78,17 @@ def load_and_draw_tiles(screen, image_name, args):
     font_pos = pygame.font.SysFont("consolas", 13, bold=True)
     font_btn = pygame.font.SysFont("consolas", 14, bold=True)
 
-    sheet_path = os.path.join(GFX_DIR, image_name) if not os.path.isabs(image_name) else image_name
+    sheet_path = os.path.join(settings.GFX_DIR, image_name) if not os.path.isabs(image_name) else image_name
     if not os.path.exists(sheet_path):
-        print(f"Erreur : {sheet_path} introuvable.")
+        print(f"Error: {sheet_path} not found.")
         return screen, []
 
     sheet_raw = pygame.image.load(sheet_path).convert()
     if "AmigaTiles" in image_name:
-        sheet_raw.set_colorkey((0, 49, 0))  # Fond vert transparent
+        sheet_raw.set_colorkey((0, 49, 0))  # Green transparent background
     sheet = sheet_raw.convert_alpha()
 
-    # Génération automatique de la grille si on utilise une image différente
+    # Auto-generate grid if using different image
     if "AmigaTiles" in image_name:
         args.tile_width = 32
         args.tile_height = 24
@@ -99,7 +99,7 @@ def load_and_draw_tiles(screen, image_name, args):
         y_starts = [10 + i * 27 for i in range(8)]
         y_ends = [y + args.tile_height for y in y_starts]
 
-    elif image_name != TILES_PATH:
+    elif image_name != settings.TILES_PATH:
         w_img, h_img = sheet.get_size()
         x_starts = []
         x_ends = []
@@ -118,25 +118,25 @@ def load_and_draw_tiles(screen, image_name, args):
             y += args.tile_height + args.margin_y
 
     else:
-        # Configuration legacy pour le tileset Populous originel
-        x_starts = [0] + [e + 1 for _, e in TILES_V_LINES]
-        x_ends = [s for s, _ in TILES_V_LINES] + [sheet.get_width()]
-        y_starts = [0] + [e + 1 for _, e in TILES_H_LINES]
-        y_ends = [s for s, _ in TILES_H_LINES] + [sheet.get_height()]
+        # Legacy configuration for original Populous tileset
+        x_starts = [0] + [e + 1 for _, e in settings.TILES_V_LINES]
+        x_ends = [s for s, _ in settings.TILES_V_LINES] + [sheet.get_width()]
+        y_starts = [0] + [e + 1 for _, e in settings.TILES_H_LINES]
+        y_ends = [s for s, _ in settings.TILES_H_LINES] + [sheet.get_height()]
 
-    # Filtrer les colonnes/lignes trop petites
+    # Filter columns/rows that are too small
     valid_cols = [c for c in range(len(x_starts)) if x_ends[c] - x_starts[c] > 5]
     valid_rows = [r for r in range(len(y_starts)) if y_ends[r] - y_starts[r] > 5]
 
     num_cols = len(valid_cols)
     num_rows = len(valid_rows)
 
-    # Extraire les tiles
-    ref_w, ref_h = args.tile_width if image_name != TILES_PATH else TILE_WIDTH, args.tile_height if image_name != TILES_PATH else TILE_HEIGHT
+    # Extract tiles
+    ref_w, ref_h = args.tile_width if image_name != settings.TILES_PATH else settings.TILE_WIDTH, args.tile_height if image_name != settings.TILES_PATH else settings.TILE_HEIGHT
     tiles = {}
     for r in valid_rows:
         for c in valid_cols:
-            # Gérer le cas de la dernière ligne restreinte sur les AmigaTiles (seulement 5 tiles)
+            # Handle restricted last row on AmigaTiles (only 5 tiles)
             if "AmigaTiles" in image_name and r == 7 and c > 4:
                 continue
 
@@ -153,7 +153,7 @@ def load_and_draw_tiles(screen, image_name, args):
                 sub = padded
             tiles[(r, c)] = sub
 
-    # Paramètres d'affichage
+    # Display parameters
     zoom = 2.0
     tile_disp_w = int(ref_w * zoom)
     tile_disp_h = int(ref_h * zoom)
@@ -174,7 +174,7 @@ def load_and_draw_tiles(screen, image_name, args):
     bg_color = (30, 30, 30)
     screen.fill(bg_color)
 
-    # Dessiner les boutons
+    # Draw buttons
     btn_names = ["AmigaTiles1.PNG", "AmigaTiles2.PNG", "AmigaTiles3.PNG", "AmigaTiles4.PNG"]
     buttons = []
     bx = 20
@@ -195,7 +195,7 @@ def load_and_draw_tiles(screen, image_name, args):
             x = 20 + ci * cell_w
             y = top_margin + 20 + ri * cell_h
 
-            # Damier de fond
+            # Checkerboard background
             checker = 8
             for cy2 in range(0, tile_disp_h, checker):
                 for cx2 in range(0, tile_disp_w, checker):
@@ -208,17 +208,17 @@ def load_and_draw_tiles(screen, image_name, args):
             scaled = pygame.transform.scale(tiles[(r, c)], (tile_disp_w, tile_disp_h))
             screen.blit(scaled, (x, y))
 
-            # Bordure
+            # Border
             pygame.draw.rect(screen, (100, 100, 100), (x - 1, y - 1, tile_disp_w + 2, tile_disp_h + 2), 1)
 
             # Position
             pos_surf = font_pos.render(f"({r},{c})", True, (255, 255, 100))
             screen.blit(pos_surf, (x + 2, y + tile_disp_h + 2))
 
-            # Labels de mapping
+            # Mapping labels
             labels = get_tile_label(r, c)
             for li, label in enumerate(labels):
-                color = (100, 255, 100) if "(non mappé)" not in label else (255, 80, 80)
+                color = (100, 255, 100) if "(unmapped)" not in label else (255, 80, 80)
                 label_surf = font.render(label, True, color)
                 screen.blit(label_surf, (x + 2, y + tile_disp_h + 16 + li * 13))
 
@@ -228,11 +228,11 @@ def load_and_draw_tiles(screen, image_name, args):
 def main():
     import argparse
     parser = argparse.ArgumentParser()
-    parser.add_argument("--image", default="AmigaTiles1.PNG", help="Fichier d'image par défaut")
-    parser.add_argument("--tile-width", type=int, default=32, help="Largeur d'un tile")
-    parser.add_argument("--tile-height", type=int, default=24, help="Hauteur d'un tile")
-    parser.add_argument("--margin-x", type=int, default=1, help="Marge horizontale entre tiles")
-    parser.add_argument("--margin-y", type=int, default=1, help="Marge verticale entre tiles")
+    parser.add_argument("--image", default="AmigaTiles1.PNG", help="Default image file")
+    parser.add_argument("--tile-width", type=int, default=32, help="Width of a tile")
+    parser.add_argument("--tile-height", type=int, default=24, help="Height of a tile")
+    parser.add_argument("--margin-x", type=int, default=1, help="Horizontal margin between tiles")
+    parser.add_argument("--margin-y", type=int, default=1, help="Vertical margin between tiles")
     args = parser.parse_args()
 
     pygame.init()
