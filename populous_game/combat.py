@@ -43,6 +43,19 @@ def damage_peep_vs_house(peep, house, dt: float) -> float:
 	return dmg
 
 
+def _select_merge_winner_and_loser(peep_a, peep_b):
+	"""Return the stronger peep and the peep to retire."""
+	if peep_a.life >= peep_b.life:
+		return peep_a, peep_b
+	return peep_b, peep_a
+
+
+def _retire_merged_loser(loser) -> None:
+	"""Apply the dead transition used after a successful merge."""
+	loser.life = 0.0
+	loser.transition(peep_state.PeepState.DEAD)
+
+
 def join_forces(peep_a, peep_b) -> bool:
 	"""Merge two same-faction peeps. Returns True if merged.
 
@@ -58,8 +71,7 @@ def join_forces(peep_a, peep_b) -> bool:
 		return False
 	if peep_a.state == peep_state.PeepState.DEAD or peep_b.state == peep_state.PeepState.DEAD:
 		return False
-	winner, loser = (peep_a, peep_b) if peep_a.life >= peep_b.life else (peep_b, peep_a)
+	winner, loser = _select_merge_winner_and_loser(peep_a, peep_b)
 	winner.life = min(settings.PEEP_LIFE_MAX, winner.life + loser.life)
-	loser.life = 0.0
-	loser.transition(peep_state.PeepState.DEAD)
+	_retire_merged_loser(loser)
 	return True

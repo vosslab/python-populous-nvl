@@ -1,5 +1,15 @@
 ## 2026-04-28
 
+### Fixes and Maintenance
+- Added a pre-parity cleanup tranche that centralizes movement
+  classification, shared spawn fallback, and merge winner/loser
+  cleanup without changing the current public peep behavior.
+- Added focused regression tests for movement legality, spawn land
+  fallback, merge tie handling, and one cross-cutting smoke check.
+- Updated [docs/TODO.md](TODO.md) to keep the backlog pointed at the
+  next explicit peep-record milestone instead of overclaiming ASM
+  parity.
+
 ### Cleanup: bandit fix, dead skipped tests deleted
 
 **Fixes and Maintenance**

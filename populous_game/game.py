@@ -188,6 +188,21 @@ class Game:
 		for y in range(0, h, max(1, self.display_scale)):
 			pygame.draw.line(self.scanline_surface, (0, 0, 0, 100), (0, y), (w, y), 1)
 
+	def _spawn_peep_at_random_land(self, count: int, row_min: int, row_max: int,
+			col_min: int, col_max: int, faction_id: int, spawn_label: str) -> None:
+		"""Spawn peeps in a region, falling back to the nearest land tile."""
+		for _ in range(count):
+			r = random.randint(row_min, row_max)
+			c = random.randint(col_min, col_max)
+			if self.game_map.get_corner_altitude(r, c) <= 0:
+				land = self.game_map.find_nearest_land(r, c)
+				if land is None:
+					raise RuntimeError(
+						f"Cannot spawn {spawn_label}: no land tile exists on the map"
+					)
+				r, c = land
+			self.peeps.append(peep.Peep(r, c, self.game_map, faction_id=faction_id))
+
 	def spawn_initial_peeps(self, count: int, faction_id: int = None) -> None:
 		"""Spawn initial peeps for a faction near top-left of the grid.
 
@@ -205,18 +220,15 @@ class Game:
 			return
 		if faction_id is None:
 			faction_id = faction.Faction.PLAYER
-		for _ in range(count):
-			r = random.randint(0, settings.GRID_HEIGHT - 1)
-			c = random.randint(0, settings.GRID_WIDTH - 1)
-			# If pick is water, find the nearest land corner.
-			if self.game_map.get_corner_altitude(r, c) <= 0:
-				land = self.game_map.find_nearest_land(r, c)
-				if land is None:
-					raise RuntimeError(
-						"Cannot spawn peep: no land tile exists on the map"
-					)
-				r, c = land
-			self.peeps.append(peep.Peep(r, c, self.game_map, faction_id=faction_id))
+		self._spawn_peep_at_random_land(
+			count,
+			0,
+			settings.GRID_HEIGHT - 1,
+			0,
+			settings.GRID_WIDTH - 1,
+			faction_id,
+			"peep",
+		)
 
 	def spawn_enemy_peeps(self, count: int = 5) -> None:
 		"""Spawn enemy peeps near bottom-right of the grid.
@@ -228,17 +240,15 @@ class Game:
 		# Layout-debug mode: flat water has no land; skip spawn.
 		if settings.DEBUG_FLAT_WATER:
 			return
-		for _ in range(count):
-			r = random.randint(settings.GRID_HEIGHT // 2, settings.GRID_HEIGHT - 1)
-			c = random.randint(settings.GRID_WIDTH // 2, settings.GRID_WIDTH - 1)
-			if self.game_map.get_corner_altitude(r, c) <= 0:
-				land = self.game_map.find_nearest_land(r, c)
-				if land is None:
-					raise RuntimeError(
-						"Cannot spawn enemy peep: no land tile exists on the map"
-					)
-				r, c = land
-			self.peeps.append(peep.Peep(r, c, self.game_map, faction_id=faction.Faction.ENEMY))
+		self._spawn_peep_at_random_land(
+			count,
+			settings.GRID_HEIGHT // 2,
+			settings.GRID_HEIGHT - 1,
+			settings.GRID_WIDTH // 2,
+			settings.GRID_WIDTH - 1,
+			faction.Faction.ENEMY,
+			"enemy peep",
+		)
 
 	def _check_game_over(self) -> None:
 		"""Check win/lose conditions and transition to GAMEOVER state if met.

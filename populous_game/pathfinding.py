@@ -49,6 +49,23 @@ def _get_cell_altitude(game_map, r: int, c: int) -> float:
 	a3 = game_map.get_corner_altitude(r + 1, c)
 	return (a0 + a1 + a2 + a3) / 4.0
 
+def _classify_move(from_r: int, from_c: int, to_r: int, to_c: int, game_map) -> tuple[bool, str]:
+	"""Classify a potential move and return `(allowed, reason)`.
+
+	The public pathfinding API still consumes a boolean check, but this
+	internal helper keeps the existing semantics centralized so future
+	parity work can reason about the same failure modes.
+	"""
+	if not (0 <= to_r < game_map.grid_height and 0 <= to_c < game_map.grid_width):
+		return False, "out_of_bounds"
+	to_alt = _get_cell_altitude(game_map, to_r, to_c)
+	if to_alt <= 0:
+		return False, "water"
+	from_alt = _get_cell_altitude(game_map, from_r, from_c)
+	if abs(to_alt - from_alt) > 1:
+		return False, "cliff"
+	return True, "ok"
+
 #============================================
 # Movement cost and validity
 #============================================
@@ -61,20 +78,8 @@ def _is_valid_move(from_r: int, from_c: int, to_r: int, to_c: int, game_map) -> 
 	2. The destination is walkable (not water).
 	3. The altitude delta between the two cells is <= 1 (can't climb cliffs).
 	"""
-	if not (0 <= to_r < game_map.grid_height and 0 <= to_c < game_map.grid_width):
-		return False
-
-	# Get walkability (recompute inline to avoid keeping state)
-	to_alt = _get_cell_altitude(game_map, to_r, to_c)
-	if to_alt <= 0:
-		return False
-
-	# Check altitude delta constraint (max 1.0)
-	from_alt = _get_cell_altitude(game_map, from_r, from_c)
-	if abs(to_alt - from_alt) > 1:
-		return False
-
-	return True
+	allowed, _ = _classify_move(from_r, from_c, to_r, to_c, game_map)
+	return allowed
 
 def _move_cost(from_r: int, from_c: int, to_r: int, to_c: int) -> float:
 	"""Return the cost to move from one cell to another (8-connected grid)."""

@@ -32,6 +32,7 @@ def test_same_faction_merge_absorbs_life():
 	assert result is True
 	assert peep_a.life == min(100.0, settings.PEEP_LIFE_MAX)
 	assert peep_b.state == peep_state.PeepState.DEAD
+	assert peep_b.life == 0.0
 
 
 def test_different_faction_merge_fails():
@@ -109,3 +110,15 @@ def test_weaker_peep_becomes_winner():
 	assert result is True
 	assert peep_a.state == peep_state.PeepState.DEAD
 	assert peep_b.life == min(100.0, settings.PEEP_LIFE_MAX)
+
+
+def test_equal_life_merge_prefers_first_argument():
+	"""Equal-life merges should remain deterministic."""
+	peep_a = MockPeep(faction_id=faction.Faction.PLAYER, life=50.0)
+	peep_b = MockPeep(faction_id=faction.Faction.PLAYER, life=50.0)
+
+	result = combat.join_forces(peep_a, peep_b)
+
+	assert result is True
+	assert peep_a.life == min(100.0, settings.PEEP_LIFE_MAX)
+	assert peep_b.state == peep_state.PeepState.DEAD

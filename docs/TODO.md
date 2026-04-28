@@ -3,7 +3,7 @@
 ## Pending
 
 - Read [asm/PEEPS_GAP_REPORT.md](../asm/PEEPS_GAP_REPORT.md) for the
-  full Python parity audit against `asm/PEEPS_BEHAVIOR.md`.
+  full Python parity gap report against `asm/PEEPS_BEHAVIOR.md`.
 - Next implementation item: add an explicit peep record layer with the
   ASM fields needed for `_move_peeps`, `_move_explorer`, and
   `_set_town`.
