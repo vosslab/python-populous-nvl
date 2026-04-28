@@ -3,6 +3,8 @@
 ### Cleanup: bandit fix, dead skipped tests deleted
 
 **Fixes and Maintenance**
+- Added [asm/PEEPS_GAP_REPORT.md](../asm/PEEPS_GAP_REPORT.md), a
+  Python parity gap report for the ASM peep behavior inventory.
 - `tools/smoke/debug_layout.py` writes `debug_layout_smoke.png` to the
   current working directory instead of `/tmp/debug_layout_smoke.png`,
   clearing the last bandit issue (B108 hardcoded_tmp_directory). The
@@ -30,6 +32,9 @@
 - Shield-panel peep bars now use a numeric ASM-style helper in
   `ui_panel.py`, with branch-specific math, clamped widths, and the
   `0x0bea` special case corrected to a full 16-wide bar.
+- Added [asm/PEEPS_BEHAVIOR.md](../asm/PEEPS_BEHAVIOR.md), a concise
+  English summary of the original ASM peep update, merge, pathing, and
+  spawn behavior.
 
 **Removals and Deprecations**
 - `tests/test_no_magic_numbers.py` deleted. The test was an
