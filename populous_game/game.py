@@ -146,6 +146,7 @@ class Game:
 		self.weapon_sprites = assets.get_weapon_sprites()
 		self.weapon_sprite_indices = assets.get_weapon_sprite_indices()
 		self.peeps = []
+		self.score = 0
 		self.running = True
 		self.show_debug = True
 		self.show_scanlines = False
@@ -297,6 +298,10 @@ class Game:
 		"""Reset game state for a new session or return to menu."""
 		self.peeps.clear()
 		self.game_map.houses.clear()
+		self.score = 0
+		for name in self.power_manager.cooldowns:
+			self.power_manager.cooldowns[name] = 0.0
+		self.mana_pool = mana_pool.ManaPool([faction.Faction.PLAYER, faction.Faction.ENEMY])
 		self.game_map.randomize(profile=self.map_profile)
 		self._maybe_flatten_for_debug()
 		self.selection.who = None
@@ -305,6 +310,7 @@ class Game:
 		self.mode_manager.shield_mode = False
 		self.mode_manager.papal_position = None
 		self.mode_manager.shield_target = None
+		self.input_controller.reset_find_cursors()
 
 	def _apply_combat_resolution(self, dt: float) -> None:
 		"""Apply combat resolution: peep-vs-peep, peep-vs-house, force joining.

@@ -1,5 +1,7 @@
 """Tests for ui_panel module."""
 
+import pygame
+
 import populous_game.ui_panel as ui_panel
 
 
@@ -109,6 +111,113 @@ class TestUIPanel:
 		peep.life = 150
 		name = panel._get_weapon_name(peep, 'peep')
 		assert name == 'Arc'
+
+	def test_get_weapon_name_knight_override(self):
+		"""Test that knight promotion overrides life-based weapon text."""
+		game = MockGame()
+		panel = ui_panel.UIPanel(game)
+
+		class MockPeep:
+			life = 10
+			weapon_type = 'knight'
+
+		peep = MockPeep()
+		name = panel._get_weapon_name(peep, 'peep')
+		assert name == 'Knight'
+
+	def test_draw_peep_bars_draws_two_asm_style_bars(self, monkeypatch):
+		"""Test that the shield-panel peep bars still draw."""
+		game = MockGame()
+		panel = ui_panel.UIPanel(game)
+
+		class MockPeep:
+			life = 0x1234
+
+		class MockSelection:
+			kind = 'peep'
+			who = MockPeep()
+
+		draw_calls = []
+
+		def fake_rect(surface, color, rect, width=0):
+			draw_calls.append((color, rect, width))
+
+		monkeypatch.setattr(pygame.draw, 'rect', fake_rect)
+		panel._draw_peep_bars(pygame.Surface((32, 32)), MockSelection(), (20, 20))
+
+		assert any(color == (102, 102, 102) and rect[0] == 23 for color, rect, _ in draw_calls)
+		assert any(color == (102, 102, 102) and rect[0] == 31 for color, rect, _ in draw_calls)
+		assert any(color == (255, 220, 0) and rect[0] == 23 for color, rect, _ in draw_calls)
+		assert any(color == (255, 140, 0) and rect[0] == 31 for color, rect, _ in draw_calls)
+
+	def test_compute_peep_bar_model_general_branch(self):
+		"""General branch should follow the ASM life scaling split."""
+		game = MockGame()
+		panel = ui_panel.UIPanel(game)
+
+		class MockPeep:
+			life = 0x1234
+			state = 'wander'
+
+		class MockSelection:
+			kind = 'peep'
+			who = MockPeep()
+
+		model = panel._compute_peep_bar_model(MockSelection())
+		assert model['branch'] == 'general'
+		assert [bar['value'] for bar in model['bars']] == [4, 16]
+
+	def test_compute_peep_bar_model_combat_branch(self):
+		"""Combat branch should split 16 bars across peep and opponent."""
+		game = MockGame()
+		panel = ui_panel.UIPanel(game)
+
+		class Opponent:
+			life = 10
+
+		class MockPeep:
+			life = 30
+			state = 'fight'
+			shield_opponent = Opponent()
+
+		class MockSelection:
+			kind = 'peep'
+			who = MockPeep()
+
+		model = panel._compute_peep_bar_model(MockSelection())
+		assert model['branch'] == 'combat'
+		assert [bar['value'] for bar in model['bars']] == [12, 4]
+
+	def test_compute_peep_bar_model_type1_branch(self):
+		"""Type-1 branch should use check_life and the peep life value."""
+		game = MockGame()
+		panel = ui_panel.UIPanel(game)
+
+		class MockPeep:
+			life = 100
+			state = 'wander'
+			check_life_value = 0x0bea
+
+		class MockSelection:
+			kind = 'peep'
+			who = MockPeep()
+
+		model = panel._compute_peep_bar_model(MockSelection())
+		assert model['branch'] == 'type1'
+		assert model['bars'][0]['value'] == 16
+		assert model['bars'][1]['value'] == 0
+
+	def test_draw_shield_panel_labels_knight(self):
+		"""A knight peep should be labeled explicitly in the shield panel."""
+		game = MockGame()
+		panel = ui_panel.UIPanel(game)
+
+		class MockPeep:
+			life = 10
+			weapon_type = 'knight'
+
+		name = panel._get_weapon_name(MockPeep(), 'peep')
+		assert name == 'Knight'
 
 	def test_hit_test_button_all_buttons_reachable(self):
 		"""Test that all defined buttons are reachable at their center."""

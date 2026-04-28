@@ -14,7 +14,80 @@
   `_make_map` / tile metadata rebuild. Guardrail: simulation output
   must not change. Defer until the island generator (added
   2026-04-28) is screenshot-stable.
-- peep health bar change to 3 healthbar 100 10 1 (1 health down every s)
+- peep health bar / shield-panel life readout: align
+  `ui_panel._draw_peep_bars()` with the ASM shield routine in
+  `asm/populous_prg.asm` (`_show_the_shield`).
+  Implementation checklist:
+  1. Current Python behavior in `ui_panel._draw_peep_bars()`:
+     - reads `selection.who.life`
+     - calls `_compute_peep_bar_model(selection)` and draws the
+       resulting bars into the existing shield-panel slot
+     - uses fixed bar positions/colors, but the actual widths now come
+       from the helper seam rather than hard-coded 100/10/1 segments
+  2. ASM branches in `_show_the_shield`:
+     - general peep branch: live peep life bar rendering
+     - combat branch: split life bars for peep and opponent
+     - special type-1 branch: `check_life`-driven life bars
+  3. Exact bar inputs from the source:
+     - general branch:
+       - peep field read: `peep[+4]`
+       - if `life > 0x1000`:
+         - `primary = life // 0x0400`
+         - `secondary = life % 0x0400`
+       - otherwise:
+         - `primary = life // 0x0100`
+         - `secondary = (life % 0x0100) // 0x0010`
+       - the helper treats both values as bar widths; draw code clamps
+         the rendered height to the bar slot
+     - combat branch:
+       - reads `peep[+4]` and opponent `peep[+4]`
+       - final widths:
+         - `barA = (lifeA * 16) // (lifeA + lifeB)`
+         - `barB = (lifeB * 16) // (lifeA + lifeB)`
+     - special type-1 branch:
+       - reads `check_life(peep[+1], peep[+8])`
+       - if return is `0`, force to `1`
+       - if return is `0x0bea`, the first bar is full (`10` in the ASM
+         call sequence)
+       - otherwise `bar = (check_life * 16) // 0x0131`
+       - second bar uses `(peep[+4] * 16) // check_life`, clamped to
+         `0..16`
+       - division uses integer truncation, matching the ASM `DIVS` /
+         `DIVU` behavior
+  4. Branch selection in Python:
+     - general branch: default for peeps when no more specific state is
+       available
+     - combat branch: `selection.kind == 'peep'`,
+       `selection.who.state == 'fight'`, and `selection.who.shield_opponent`
+       is present
+     - special type-1 branch: `selection.kind == 'peep'` and
+       `selection.who.check_life_value` is present
+     - current Python peep fields used: `life`, `state`, `weapon_type`,
+       optional `shield_opponent`, optional `check_life_value`
+  5. Current Python behavior that already matches ASM:
+     - the shield panel is peep-centric and uses the current selected
+       entity
+     - life values are read from the live peep object
+     - peep life still decays in the normal update loop
+  6. Current Python behavior that differs from ASM:
+     - the current code does not yet infer combat/type-1 branch state
+       from the exact ASM peep flags; it uses the best available model
+       seam
+     - the helper is an approximation over the current Python model,
+       not a raw struct decode of the ASM record
+  7. Smallest patch plan:
+     - keep the existing shield panel layout and peep-centric selection
+       path
+     - keep `_compute_peep_bar_model(selection)` as the numeric seam
+     - drive `_draw_peep_bars()` from that helper without introducing a
+       new health subsystem
+  8. Focused tests:
+     - unit test the general branch against a peep with life above and
+       below `0x1000`
+     - unit test the combat branch with two peeps of known life values
+     - unit test the type-1 branch by stubbing `check_life_value`
+     - keep the existing shield-panel label test and add branch-specific
+       model assertions instead of broad screenshot diffs
 - Peep behavior case: build
 - Peep behavior case: gather
 - Peep behavior case: fight

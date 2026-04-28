@@ -18,6 +18,7 @@ import populous_game.settings as settings
 def game():
 	"""Create a game instance for testing."""
 	g = game_module.Game()
+	g.app_state.transition_to(g.app_state.PLAYING)
 	g.spawn_initial_peeps(10, faction_id=faction.Faction.PLAYER)
 	g.spawn_enemy_peeps(5)
 	# Ensure a flat test area exists
@@ -109,17 +110,145 @@ def test_swamp_lowers_terrain_for_drowning(game):
 
 def test_knight_boosts_player_peep_life(game):
 	"""Knight power converts a player peep into a boosted knight."""
-	player_peeps = [p for p in game.peeps if p.faction_id == faction.Faction.PLAYER]
-	assert len(player_peeps) > 0
-	initial_life = player_peeps[0].life
+	player_peep = next(p for p in game.peeps if p.faction_id == faction.Faction.PLAYER)
+	initial_life = player_peep.life
+	initial_score = game.score
 
 	result = game.power_manager.activate('knight', None)
 
 	assert result.success
-	# Verify a peep was boosted (doubled life, capped at max)
-	boosted_peep = [p for p in game.peeps if p.weapon_type == 'knight']
-	assert len(boosted_peep) > 0
-	assert boosted_peep[0].life >= initial_life
+	boosted_peep = next(p for p in game.peeps if getattr(p, 'weapon_type', None) == 'knight')
+	assert boosted_peep.faction_id == faction.Faction.PLAYER
+	assert boosted_peep.life >= initial_life
+	assert game.score == initial_score + 150
+
+
+def test_knight_promotes_single_valid_player_peep(game):
+	"""Knight power promotes exactly one valid player peep."""
+	result = game.power_manager.activate('knight', None)
+
+	assert result.success
+	knight = next(p for p in game.peeps if getattr(p, 'weapon_type', None) == 'knight')
+	assert knight.faction_id == faction.Faction.PLAYER
+	for peep_obj in game.peeps:
+		if peep_obj is not knight:
+			assert getattr(peep_obj, 'weapon_type', None) != 'knight'
+
+
+def test_knight_prefers_selected_current_peep_over_best_life(game):
+	"""Knight power should use the current selected peep when one is active."""
+	player_peeps = [p for p in game.peeps if p.faction_id == faction.Faction.PLAYER]
+	assert len(player_peeps) >= 2
+	selected = min(player_peeps, key=lambda p: p.life)
+	other = max(player_peeps, key=lambda p: p.life)
+	game.selection.set(selected, 'peep')
+
+	result = game.power_manager.activate('knight', None)
+
+	assert result.success
+	assert getattr(selected, 'weapon_type', None) == 'knight'
+	if other is not selected:
+		assert getattr(other, 'weapon_type', None) != 'knight'
+
+
+def test_knight_fails_without_mutation_when_no_player_peep(game):
+	"""Knight power fails cleanly when there is no eligible player peep."""
+	game.peeps = [p for p in game.peeps if p.faction_id != faction.Faction.PLAYER]
+	initial_score = game.score
+	initial_state = [
+		(
+			p.faction_id,
+			p.life,
+			p.weapon_type,
+			p.state,
+			p.x,
+			p.y,
+			getattr(p, 'target_x', None),
+			getattr(p, 'target_y', None),
+			p.is_moving,
+		)
+		for p in game.peeps
+	]
+	initial_selection = (game.selection.who, game.selection.kind)
+	initial_cursor = (game.input_controller._find_knight_cursor, game.input_controller._find_battle_cursor)
+
+	result = game.power_manager.activate('knight', None)
+
+	assert not result.success
+	assert game.score == initial_score
+	assert [
+		(
+			p.faction_id,
+			p.life,
+			p.weapon_type,
+			p.state,
+			p.x,
+			p.y,
+			getattr(p, 'target_x', None),
+			getattr(p, 'target_y', None),
+			p.is_moving,
+		)
+		for p in game.peeps
+	] == initial_state
+	assert (game.selection.who, game.selection.kind) == initial_selection
+	assert (game.input_controller._find_knight_cursor, game.input_controller._find_battle_cursor) == initial_cursor
+
+
+def test_knight_fails_without_mutation_when_paused(game):
+	"""Knight power does not mutate score or peeps while the game is paused."""
+	game.app_state.transition_to(game.app_state.PAUSED)
+	initial_score = game.score
+	initial_state = [
+		(
+			p.faction_id,
+			p.life,
+			p.weapon_type,
+			p.state,
+			p.x,
+			p.y,
+			getattr(p, 'target_x', None),
+			getattr(p, 'target_y', None),
+			p.is_moving,
+		)
+		for p in game.peeps
+	]
+	initial_selection = (game.selection.who, game.selection.kind)
+	initial_cursor = (game.input_controller._find_knight_cursor, game.input_controller._find_battle_cursor)
+
+	result = game.power_manager.activate('knight', None)
+
+	assert not result.success
+	assert game.score == initial_score
+	assert [
+		(
+			p.faction_id,
+			p.life,
+			p.weapon_type,
+			p.state,
+			p.x,
+			p.y,
+			getattr(p, 'target_x', None),
+			getattr(p, 'target_y', None),
+			p.is_moving,
+		)
+		for p in game.peeps
+	] == initial_state
+	assert (game.selection.who, game.selection.kind) == initial_selection
+	assert (game.input_controller._find_knight_cursor, game.input_controller._find_battle_cursor) == initial_cursor
+
+
+def test_knight_does_not_double_award_on_existing_knight(game):
+	"""Knight power should not re-award score by re-promoting an existing knight."""
+	first = game.power_manager.activate('knight', None)
+	assert first.success
+	initial_score = game.score
+	knight = next(p for p in game.peeps if getattr(p, 'weapon_type', None) == 'knight')
+
+	second = game.power_manager.activate('knight', None)
+
+	assert not second.success
+	assert game.score == initial_score
+	assert next(p for p in game.peeps if getattr(p, 'weapon_type', None) == 'knight') is knight
 
 
 def test_power_insufficient_mana_fails(game):

@@ -332,29 +332,124 @@ class UIPanel:
 		if bar2_h > 0:
 			pygame.draw.rect(surface, (255, 140, 0), (rect2_x, bar2_y, bar_w, bar2_h))
 
-	def _draw_peep_bars(self, surface, selection, blason_br):
-		"""Draw health bars for a peep."""
-		life = float(selection.who.life)
-		hundreds = int(life // 100)
-		max_hundreds = 10.0
-		ratio_yellow = min(1.0, max(0.0, hundreds / max_hundreds))
-		units = life % 100
-		ratio_orange = min(1.0, max(0.0, units / 99.0))
+	def _compute_peep_bar_model(self, selection):
+		"""Return the shield-panel bar model for the current peep.
+
+		The model is a dict with keys:
+		- branch: 'general', 'combat', 'type1', or None
+		- bars: list of bar dicts with x, color, value, and max_value
+		- bar_w / bar_max_h / bar_bg_y: layout metadata for drawing
+		"""
+		if selection.kind != 'peep' or selection.who is None:
+			return None
+		peep = selection.who
+		life = int(float(getattr(peep, 'life', 0.0)))
 		bar_w = 4
 		bar_max_h = 16
-		rect1_x = blason_br[0] + 3
-		rect2_x = blason_br[0] + 11
+		bar_bg_y = 0
+		branch = 'general'
+		primary = None
+		secondary = None
+
+		# ASM combat branch seam: rely on an explicit opponent reference if
+		# the current model exposes one. The branch is only selected when
+		# the peep is in FIGHT and an opponent with life is available.
+		if getattr(peep, 'state', None) == 'fight':
+			opponent = getattr(peep, 'shield_opponent', None)
+			if opponent is not None and hasattr(opponent, 'life'):
+				opp_life = int(float(getattr(opponent, 'life', 0.0)))
+				total = life + opp_life
+				if total > 0:
+					primary = (life * 16) // total
+					secondary = (opp_life * 16) // total
+					branch = 'combat'
+		# ASM special type-1 branch seam: only selected when the current
+		# model exposes an explicit check_life input. This keeps the seam
+		# pure without inventing a new health subsystem.
+		elif hasattr(peep, 'check_life_value'):
+			check_life = int(float(getattr(peep, 'check_life_value')))
+			if check_life == 0:
+				check_life = 1
+			if check_life == 0x0BEA:
+				primary = 16
+				secondary = (life * 16) // check_life if check_life else 0
+				secondary = min(16, max(0, secondary))
+			else:
+				primary = (check_life * 16) // 0x0131
+				secondary = ((life * 16) // check_life) if check_life else 0
+				secondary = min(16, max(0, secondary))
+			primary = min(16, max(0, primary))
+			branch = 'type1'
+
+		if branch == 'combat':
+			return {
+				'branch': branch,
+				'bar_w': bar_w,
+				'bar_max_h': bar_max_h,
+				'bar_bg_y': bar_bg_y,
+				'bars': [
+					{'x': 0, 'color': (255, 220, 0), 'value': primary, 'max_value': 16},
+					{'x': 0, 'color': (255, 140, 0), 'value': secondary, 'max_value': 16},
+				],
+			}
+		if branch == 'type1':
+			return {
+				'branch': branch,
+				'bar_w': bar_w,
+				'bar_max_h': bar_max_h,
+				'bar_bg_y': bar_bg_y,
+				'bars': [
+					{'x': 0, 'color': (255, 220, 0), 'value': primary, 'max_value': 10},
+					{'x': 0, 'color': (255, 140, 0), 'value': secondary, 'max_value': 16},
+				],
+			}
+
+		# General branch, matching the ASM scale split:
+		# - life > 0x1000: primary = life / 0x400, secondary = life % 0x400
+		# - life <= 0x1000: primary = life / 0x100, secondary = (life % 0x100) / 0x10
+		if life > 0x1000:
+			primary = life // 0x0400
+			secondary = life % 0x0400
+		else:
+			primary = life // 0x0100
+			secondary = (life % 0x0100) // 0x0010
+		primary = min(16, max(0, primary))
+		secondary = min(16, max(0, secondary))
+		return {
+			'branch': 'general',
+			'bar_w': bar_w,
+			'bar_max_h': bar_max_h,
+			'bar_bg_y': bar_bg_y,
+			'bars': [
+				{'x': 0, 'color': (255, 220, 0), 'value': primary, 'max_value': 16},
+				{'x': 0, 'color': (255, 140, 0), 'value': secondary, 'max_value': 16},
+			],
+		}
+
+	def _draw_peep_bars(self, surface, selection, blason_br):
+		"""Draw the shield-panel life readout for a peep."""
+		model = self._compute_peep_bar_model(selection)
+		if model is None:
+			return
+		bar_w = model['bar_w']
+		bar_max_h = model['bar_max_h']
 		bar_bg_y = blason_br[1] + 3
-		pygame.draw.rect(surface, (102, 102, 102), (rect1_x, bar_bg_y, bar_w, bar_max_h))
-		pygame.draw.rect(surface, (102, 102, 102), (rect2_x, bar_bg_y, bar_w, bar_max_h))
-		bar1_h = int(bar_max_h * ratio_yellow)
-		bar1_y = bar_bg_y + (bar_max_h - bar1_h)
-		if bar1_h > 0:
-			pygame.draw.rect(surface, (255, 220, 0), (rect1_x, bar1_y, bar_w, bar1_h))
-		bar2_h = int(bar_max_h * ratio_orange)
-		bar2_y = bar_bg_y + (bar_max_h - bar2_h)
-		if bar2_h > 0:
-			pygame.draw.rect(surface, (255, 140, 0), (rect2_x, bar2_y, bar_w, bar2_h))
+		bar_positions = [blason_br[0] + 3, blason_br[0] + 11]
+		if model['branch'] == 'general':
+			bar_positions = [blason_br[0] + 3, blason_br[0] + 11]
+		elif model['branch'] == 'combat':
+			bar_positions = [blason_br[0] + 3, blason_br[0] + 11]
+		elif model['branch'] == 'type1':
+			bar_positions = [blason_br[0] + 3, blason_br[0] + 11]
+		for idx, bar in enumerate(model['bars']):
+			x = bar_positions[idx]
+			pygame.draw.rect(surface, (102, 102, 102), (x, bar_bg_y, bar_w, bar_max_h))
+			value = int(bar['value'])
+			max_value = max(1, int(bar['max_value']))
+			bar_h = int(bar_max_h * min(1.0, max(0.0, value / max_value)))
+			bar_y = bar_bg_y + (bar_max_h - bar_h)
+			if bar_h > 0:
+				pygame.draw.rect(surface, bar['color'], (x, bar_y, bar_w, bar_h))
 
 	def _get_weapon_name(self, target, target_type):
 		"""Get weapon name for display in coat-of-arms."""
@@ -374,6 +469,8 @@ class UIPanel:
 			return by_type.get(target.building_type, 'None')
 
 		life = float(target.life)
+		if getattr(target, 'weapon_type', None) == 'knight':
+			return 'Knight'
 		if life < 20:
 			return 'Mains nues'
 		if life < 40:

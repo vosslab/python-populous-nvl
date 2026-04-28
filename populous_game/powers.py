@@ -182,15 +182,31 @@ def _power_knight(game, target, spec) -> PowerResult:
 	"""Convert one of the player's peeps into a Knight (boosted life + state)."""
 	import populous_game.faction as faction
 	import populous_game.peep_state as peep_state
-	# Find a player peep with the highest life.
-	candidates = [p for p in game.peeps
-		if p.faction_id == faction.Faction.PLAYER
-		and p.state != peep_state.PeepState.DEAD]
-	if not candidates:
-		return PowerResult(False, message='No player peep to knight')
-	knight = max(candidates, key=lambda p: p.life)
+	if not game.app_state.is_playing() or game.app_state.is_simulation_paused():
+		return PowerResult(False, message='Knight requires active play')
+	# ASM indexes the current peep target directly. Prefer the selected peep
+	# when the UI has one; otherwise fall back to the current live player peep
+	# because the existing hotkey/button path does not supply an explicit peep id.
+	knight = None
+	selected = getattr(game.selection, 'who', None)
+	if selected is not None and getattr(game.selection, 'kind', None) == 'peep':
+		if selected in game.peeps and selected.faction_id == faction.Faction.PLAYER:
+			if selected.state != peep_state.PeepState.DEAD and getattr(selected, 'weapon_type', None) != 'knight':
+				knight = selected
+	if knight is None:
+		candidates = [p for p in game.peeps
+			if p.faction_id == faction.Faction.PLAYER
+			and p.state != peep_state.PeepState.DEAD
+			and getattr(p, 'weapon_type', None) != 'knight']
+		if not candidates:
+			return PowerResult(False, message='No player peep to knight')
+		knight = max(candidates, key=lambda p: p.life)
 	knight.life = min(settings.PEEP_LIFE_MAX, knight.life * 2.0)
 	knight.weapon_type = 'knight'
+	# Preserve a visible target marker for the promoted unit when the
+	# current session already tracks one, which is the closest available
+	# representation of the ASM magnet/leader bookkeeping in this model.
+	game.mode_manager.shield_target = knight
 	# Let them go on march toward the centroid of enemies.
 	enemies = [p for p in game.peeps if p.faction_id == faction.Faction.ENEMY]
 	if enemies and peep_state.PeepState.MARCH in knight._ALLOWED_TRANSITIONS.get(knight.state, ()):
@@ -198,6 +214,8 @@ def _power_knight(game, target, spec) -> PowerResult:
 		ey = sum(p.y for p in enemies) / len(enemies)
 		knight.target_x, knight.target_y = float(ex), float(ey)
 		knight.transition(peep_state.PeepState.MARCH)
+	game.selection.set(knight, 'peep')
+	game.score += 150
 	return PowerResult(True, mana_spent=spec.mana_cost,
 		cooldown=spec.cooldown, affected_cells=[(int(knight.y), int(knight.x))])
 

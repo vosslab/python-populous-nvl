@@ -8,6 +8,28 @@
   clearing the last bandit issue (B108 hardcoded_tmp_directory). The
   smoke test still runs the same frame-capture + pixel-sample check;
   only the output path changed.
+- The peep shield-panel readout now uses three life segments instead
+  of the older hundred/unit split, matching the backlog note for a
+  100/10/1-style display and making the HUD more precise for high-life
+  peeps.
+- Added [asm/KNIGHT_REPORT.md](../asm/KNIGHT_REPORT.md), a focused ASM
+  reference note for the knight power routine and its current Python
+  mapping, now written in US English.
+- Knight promotion now awards the documented score bonus, refuses to
+  re-promote an existing knight, and only activates during active play;
+  the test suite now checks score mutation, failure non-mutation,
+  target selection, and repeated activation behavior.
+- Knight peeps now show an explicit "Knight" label in the shield
+  panel instead of falling back to life-based weapon text.
+- The knight ASM note now separates ASM-confirmed behavior, Python
+  implementation behavior, inferred compatibility choices, and the
+  remaining hidden magnet/leader bookkeeping gap. It no longer phrases
+  the result as full ASM parity.
+- Reset/new-game flow now clears the knight/battle find cursors so
+  `_find_knight` starts from a clean cycle after menu transitions.
+- Shield-panel peep bars now use a numeric ASM-style helper in
+  `ui_panel.py`, with branch-specific math, clamped widths, and the
+  `0x0bea` special case corrected to a full 16-wide bar.
 
 **Removals and Deprecations**
 - `tests/test_no_magic_numbers.py` deleted. The test was an

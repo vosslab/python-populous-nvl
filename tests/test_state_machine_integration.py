@@ -173,3 +173,57 @@ def test_gameover_state_q_returns_to_menu():
 		assert game.app_state.is_menu()
 	finally:
 		pygame.quit()
+
+
+def test_reset_clears_knight_state_and_score():
+	"""Resetting the game should clear promoted knights and score."""
+	pygame.init()
+	pygame.display.set_mode((1, 1))
+
+	try:
+		game = Game()
+		game.app_state.transition_to(game.app_state.PLAYING)
+		game.spawn_initial_peeps(5)
+		result = game.power_manager.activate('knight', None)
+		assert result.success
+		assert game.score == 150
+		assert any(getattr(p, 'weapon_type', None) == 'knight' for p in game.peeps)
+
+		game._reset_game()
+
+		assert game.score == 0
+		assert not any(getattr(p, 'weapon_type', None) == 'knight' for p in game.peeps)
+		assert game.input_controller._find_knight_cursor == -1
+		assert game.input_controller._find_battle_cursor == -1
+	finally:
+		pygame.quit()
+
+
+def test_new_game_starts_knight_cycle_from_beginning():
+	"""A fresh session should not inherit find-knight cursor state."""
+	pygame.init()
+	pygame.display.set_mode((1, 1))
+
+	try:
+		game = Game()
+		game.app_state.transition_to(game.app_state.PLAYING)
+		game.spawn_initial_peeps(6)
+		game.spawn_enemy_peeps(2)
+		assert game.power_manager.activate('knight', None).success
+		game.input_controller._handle_find_knight()
+		assert game.input_controller._find_knight_cursor != -1
+
+		game.app_state.transition_to(game.app_state.PAUSED)
+		game._reset_game()
+		assert game.input_controller._find_knight_cursor == -1
+		assert game.input_controller._find_battle_cursor == -1
+		game.app_state.transition_to(game.app_state.MENU)
+		game.app_state.transition_to(game.app_state.PLAYING)
+		game.spawn_initial_peeps(6)
+		game.spawn_enemy_peeps(2)
+		assert game.power_manager.activate('knight', None).success
+		game.input_controller._handle_find_knight()
+
+		assert game.input_controller._find_knight_cursor >= 0
+	finally:
+		pygame.quit()

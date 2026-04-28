@@ -29,6 +29,11 @@ class InputController:
 		# assert it grew. Bounded length so old messages get evicted.
 		self.tooltip_messages: list = []
 
+	def reset_find_cursors(self) -> None:
+		"""Clear cycling cursors so a fresh session starts from the beginning."""
+		self._find_battle_cursor = -1
+		self._find_knight_cursor = -1
+
 	def _handle_ui_click(self, action, held=False):
 		"""Handle a UI button click (compass, powers)."""
 		self.game.last_button_click = (action, time.time())

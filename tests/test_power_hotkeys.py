@@ -67,6 +67,15 @@ def test_knight_hotkey_activates_immediately(game):
 	game.power_manager.activate.assert_called_once_with('knight', None)
 
 
+def test_knight_button_routes_through_same_activation_path(game):
+	"""Clicking the knight button should call the same activation path as K."""
+	game.power_manager.activate = Mock(return_value=Mock(success=True))
+
+	game.input_controller._handle_ui_click('_do_knight', held=False)
+
+	game.power_manager.activate.assert_called_once_with('knight', None)
+
+
 def test_papal_hotkey_activates_immediately(game):
 	"""Pressing P (papal hotkey) activates papal immediately."""
 	assert game.keymap['power_papal'] == 'p'
