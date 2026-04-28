@@ -34,7 +34,9 @@ class Game:
 		"""Return the player faction ID."""
 		return faction.Faction.PLAYER
 	def __init__(self, display_scale: int | None = None, seed: int | None = None,
-			debug_layout: bool = False):
+			debug_layout: bool = False,
+			map_profile: str = 'remaster_islands'):
+		self.map_profile = map_profile
 		# Load keymap (user config or defaults)
 		self.keymap = keymap.load_keymap()
 		# M6 Patch 8: --debug-layout overlay flag. When True, the renderer
@@ -131,9 +133,9 @@ class Game:
 		# Honor CLI seed override for deterministic terrain. None falls
 		# back to the wall-clock seeded path used by the existing run().
 		if seed is None:
-			self.game_map.randomize()
+			self.game_map.randomize(profile=self.map_profile)
 		else:
-			self.game_map.randomize(seed=int(seed))
+			self.game_map.randomize(seed=int(seed), profile=self.map_profile)
 		# Apply the flat-water debug pass once at boot. The same helper
 		# runs again whenever _reset_game re-randomizes so a
 		# DEBUG_FLAT_WATER session stays flat across menu->play cycles.
@@ -295,7 +297,7 @@ class Game:
 		"""Reset game state for a new session or return to menu."""
 		self.peeps.clear()
 		self.game_map.houses.clear()
-		self.game_map.randomize()
+		self.game_map.randomize(profile=self.map_profile)
 		self._maybe_flatten_for_debug()
 		self.selection.who = None
 		self.selection.kind = None

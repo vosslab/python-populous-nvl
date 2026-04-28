@@ -75,6 +75,17 @@ def parse_args(argv: list | None = None) -> argparse.Namespace:
 		help='Deterministic terrain seed for GameMap.randomize. The only '
 			'option that affects simulation output.'
 	)
+	# Map generator profile. Default is the new island generator;
+	# classic_reference is the Amiga-faithful reference profile.
+	parser.add_argument(
+		'-m', '--map-profile', dest='map_profile',
+		choices=('remaster_islands', 'classic_reference'),
+		default='remaster_islands',
+		help='Terrain generator profile. remaster_islands (default) grows '
+			'1-3 large smooth inhabitable islands with validation. '
+			'classic_reference reproduces the Amiga three-blob walker for '
+			'side-by-side comparison.'
+	)
 	# Headless screenshot capture.
 	parser.add_argument(
 		'-o', '--screenshot', dest='screenshot', default=None,

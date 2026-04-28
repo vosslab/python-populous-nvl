@@ -32,7 +32,7 @@ def _digest(game):
 	corners = tuple(tuple(row) for row in game.game_map.corners)
 	peeps = tuple(
 		(p.state, round(p.x, 4), round(p.y, 4), round(p.life, 3),
-		 p.faction_id, p.weapon_type, p.dead)
+			p.faction_id, p.weapon_type, p.dead)
 		for p in game.peeps
 	)
 	mana_player = game.mana_pool.get_mana(faction.Faction.PLAYER)

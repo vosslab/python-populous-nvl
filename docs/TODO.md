@@ -2,6 +2,18 @@
 
 ## Pending
 
+- NumPy-backed terrain model. Move `GameMap.corners` from
+  list-of-lists to `numpy.ndarray(dtype=numpy.uint8)` shape
+  `(grid_height + 1, grid_width + 1)`. Also convert `_map_alt` and
+  `_map_blk` (when added) to ndarrays. Preserve the existing
+  `GameMap` public API (`get_corner_altitude`, `set_corner_altitude`,
+  `get_tile_key`, `propagate_raise`, terrain helpers) -- callers in
+  the renderer, powers, peeps, and input modules continue to use
+  those methods, not raw indexing. Phase 2 may migrate the renderer
+  through stable helper methods. Phase 3 may add a vectorized
+  `_make_map` / tile metadata rebuild. Guardrail: simulation output
+  must not change. Defer until the island generator (added
+  2026-04-28) is screenshot-stable.
 - peep health bar change to 3 healthbar 100 10 1 (1 health down every s)
 - Peep behavior case: build
 - Peep behavior case: gather

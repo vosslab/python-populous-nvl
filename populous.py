@@ -36,6 +36,7 @@ def main() -> None:
 		display_scale=display_scale,
 		seed=args.seed,
 		debug_layout=args.debug_layout,
+		map_profile=args.map_profile,
 	)
 	# Headless capture path: render one frame to disk and exit.
 	if args.screenshot is not None:

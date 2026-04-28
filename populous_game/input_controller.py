@@ -336,7 +336,7 @@ class InputController:
 				elif event.key == pygame.K_F3:
 					self.game.peeps.clear()
 					self.game.game_map.houses.clear()
-					self.game.game_map.randomize()
+					self.game.game_map.randomize(profile=self.game.map_profile)
 					self.game.spawn_initial_peeps(10)
 				elif event.key == pygame.K_F4:
 					self.game.game_map.set_all_altitude(1)

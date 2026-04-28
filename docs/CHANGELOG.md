@@ -1,3 +1,140 @@
+## 2026-04-28
+
+### Cleanup: bandit fix, dead skipped tests deleted
+
+**Fixes and Maintenance**
+- `tools/smoke/debug_layout.py` writes `debug_layout_smoke.png` to the
+  current working directory instead of `/tmp/debug_layout_smoke.png`,
+  clearing the last bandit issue (B108 hardcoded_tmp_directory). The
+  smoke test still runs the same frame-capture + pixel-sample check;
+  only the output path changed.
+
+**Removals and Deprecations**
+- `tests/test_no_magic_numbers.py` deleted. The test was an
+  `@pytest.mark.xfail(strict=False)` "soft gate" that called
+  `pytest.skip(...)` whenever issues existed, so it neither passed
+  nor failed meaningfully. Its allowlist had drifted out of sync with
+  the current settings module and its regex missed many real magic
+  numbers. No replacement; the linting it pretended to do was never
+  enforced.
+- `tests/test_settings_immutable.py` deleted. The test imported a
+  module (`populous_game.game_map`) that no longer exists, so the
+  `ImportError` branch in its body always fired and `pytest.skip`
+  was the only outcome. The premise (settings constants are
+  immutable) is also incompatible with the current architecture --
+  `populous_game.cli.apply_args_to_settings` deliberately mutates
+  settings per `--preset`, `--size`, and `--visible-tiles`.
+
+### New island terrain generator replaces legacy row-major noise
+
+**Additions and New Features**
+- New `IslandProfile` class plus two profile constants in
+  [populous_game/terrain.py](../populous_game/terrain.py):
+  `CLASSIC_REFERENCE` (Amiga-faithful three-blob walker) and
+  `REMASTER_ISLANDS` (default; tuned for 1-3 large smooth inhabitable
+  islands). Both use the same growth engine -- only parameters differ.
+- `GameMap._randomize_islands` shared engine: starts from all-water
+  corners, picks 3 seeds (with chebyshev min-spacing for the remaster
+  profile), runs bounded random walks that call `propagate_raise`
+  until each blob reaches its `peak_target` AND `min_walk_steps`.
+  Heights only change through the constrained raise primitive, so
+  slopes always stay smooth.
+- `GameMap.propagate_raise(..., max_altitude=None)` now accepts an
+  optional per-corner cap callable. `max_altitude=None` (the default
+  for every existing gameplay caller) preserves bit-exact pre-change
+  behavior. The island generator passes `_island_max_altitude`,
+  which encodes a one-tile water moat by capping rows/cols 0,1 and
+  grid-1,grid at altitude 0 and ramping up by chebyshev distance to
+  the edge.
+- Tile-mask morphology cleanup pass on the remaster path:
+  `_land_tile_mask`, `_dilate`, `_erode`, `_close_mask`,
+  `_filter_components`, `_morphology_cleanup`, `_realise_mask_diff`.
+  Grow-only: closing joins narrow water cracks and absorbs
+  near-touching blobs; new "should be land" tiles are realised via
+  constrained `propagate_raise` so coast slopes stay smooth.
+  Speck removal is deferred to a future constrained-lower pass.
+- Validation pipeline on the remaster path: `_edge_tiles_all_water`,
+  `_connected_components` (iterative BFS via `collections.deque`),
+  `_count_buildable_tiles`, `_count_spawnable_tiles`,
+  `_validate_island_map`, `_score_island_map`. Fixed-seed tests must
+  pass validation; runtime fallback only restores the best-scoring
+  attempt and logs seed/profile/score so a follow-up tuning pass
+  can investigate.
+- NumPy is used as an internal implementation detail of the generator
+  helpers (tile masks, edge checks, buildable/spawnable counts via
+  vectorized 4-corner stencils). Single conversion entry point
+  `GameMap._corner_array()` localizes the migration. The public
+  `GameMap` API stays on list-of-lists corners for this milestone.
+- New test file
+  [tests/test_terrain_islands_generator.py](../tests/test_terrain_islands_generator.py)
+  with 49 tests covering: classic + remaster determinism, smoothness
+  invariants, large connected landmass, validation pass for fixed
+  seeds, buildable floor (conservative >=30 floor independent of the
+  tunable `VALIDATION_BUILDABLE_TILES_MIN`), water-moat invariant on
+  corners, edge tiles all water (100% coverage), and that
+  `propagate_raise(max_altitude=...)` respects the moat under
+  aggressive raise loops.
+
+**Behavior or Interface Changes**
+- `GameMap.randomize` now defaults to `profile="remaster_islands"`.
+  Existing callers in `game.py`, `input_controller.py`, and
+  test files that pass only `seed=` are unchanged in spelling but
+  now receive island terrain instead of row-major noise.
+- `randomize` signature: `min_level` and `max_level` removed (they
+  were exclusively consumed by the old row-major path) and
+  `profile=` keyword added.
+- The two valid `profile` values are `"remaster_islands"` (default)
+  and `"classic_reference"`. Any other value raises `ValueError`.
+- New CLI flag `-m / --map-profile` selects the generator at launch
+  time. Default `remaster_islands`. `classic_reference` runs the
+  Amiga-faithful walker for side-by-side visual comparison.
+- `Game.__init__` accepts a new `map_profile` kwarg; the value is
+  stored on `self.map_profile` and passed to every `randomize` call
+  including the in-game `_reset_game` and the `F3` re-randomize hook
+  in `input_controller.py`.
+
+**Removals and Deprecations**
+- The legacy `_randomize_legacy_noise` row-major bounded random walk
+  is removed entirely. It produced continent-style noisy heightmaps
+  that did not match the Populous "island nation" feel and could not
+  reach the moat-locked invariant the remaster requires. The Amiga
+  shape grammar is preserved by `classic_reference`; nothing else of
+  value was lost.
+
+**Decisions and Failures**
+- Initial cut used a `can_raise(r, c) -> bool` predicate on
+  `propagate_raise` (locks moat corners). First smoke run found a
+  smoothness violation: the cascade that recursed from an interior
+  corner toward a moat-locked neighbor was refused at the moat,
+  leaving a delta-2 (or delta-3) cliff. Fix: replaced the boolean
+  predicate with a `max_altitude(r, c) -> int` callable. The cap
+  ramps from 0 at the moat to ALTITUDE_MAX deep inland, so the
+  cascade naturally caps at the right altitude per corner instead
+  of refusing-and-cliffing. Recorded so this trap is documented.
+- Initial REMASTER_ISLANDS profile (`min_walk_steps=1500`,
+  `walk_budget=9000`) over-grew to 90%+ land fraction (continent,
+  not islands). Each post-peak walker step lifts one cascade ring
+  outward, so 1500 steps per walker x 3 walkers fills the map.
+  Tuned down to `min_walk_steps=20`, `walk_budget=120` after smoke
+  testing; remaster profile now consistently lands at 28-36% land.
+- Chose one engine + two profiles over two independent generators
+  (matches the "fewer, longer-growing walkers with validation"
+  philosophy) -- profiles only change parameter dataclasses, not
+  the engine.
+
+**Developer Tests and Notes**
+- All 1146 non-pre-existing tests pass (`test_bandit_security` flags
+  a pre-existing temp-path issue in `tools/smoke/debug_layout.py`,
+  unrelated; one indentation test on `tests/test_canvas_size_compat.py`
+  is also pre-existing). Both deselected explicitly.
+- pyflakes clean for the modified production file and the new test
+  file.
+- Smoke run results: classic profile produces ~40-63% land
+  (validation off; reference fidelity); remaster profile produces
+  28-36% land with all 4 sample seeds passing validation on the
+  first attempt. Final tuning expected via screenshot review in a
+  follow-up.
+
 ## 2026-04-27
 
 ### Research: original map-gen algorithm captured in asm/MAP_GEN_REPORT.md

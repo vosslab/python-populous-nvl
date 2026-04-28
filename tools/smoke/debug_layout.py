@@ -2,8 +2,9 @@
 """Smoke test for the M6 Patch 8 --debug-layout overlay.
 
 Boots a headless game, flips on `debug_layout`, captures one frame to
-`/tmp/debug_layout_smoke.png`, then samples a handful of overlay-color
-pixels to confirm the diagnostic geometry actually rendered.
+`debug_layout_smoke.png` in the current working directory, then samples
+a handful of overlay-color pixels to confirm the diagnostic geometry
+actually rendered.
 
 Exits 0 on PASS, 1 on FAIL.
 """
@@ -30,10 +31,10 @@ os.environ['SDL_AUDIODRIVER'] = 'dummy'
 import tools.headless_runner as runner
 
 
-# Output path is reused across runs; underscore-prefixed so cleanup is
-# safe on dev machines but the tools/smoke/README convention here is
-# /tmp/<name>_smoke.png.
-OUT_PATH = '/tmp/debug_layout_smoke.png'
+# Output path is reused across runs and lives in the current working
+# directory so bandit's hardcoded-tmp-directory rule (CWE-377) is happy
+# and so the file is easy to inspect alongside the test invocation.
+OUT_PATH = 'debug_layout_smoke.png'
 
 
 def main() -> int:
