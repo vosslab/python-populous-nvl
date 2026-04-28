@@ -1,5 +1,29 @@
 ## 2026-04-27
 
+### Research: original map-gen algorithm captured in asm/MAP_GEN_REPORT.md
+
+**Additions and New Features**
+- [asm/MAP_GEN_REPORT.md](../asm/MAP_GEN_REPORT.md): documents the
+  original Amiga genesis pass at `_make_alt`
+  ([asm/populous_prg.asm:1189](../asm/populous_prg.asm)),
+  `_make_thing` (line 1208), `_raise_point` (line 1274), and
+  `_make_map` (line 1420). Conclusion: the original generator is
+  three localized random walks that each pile altitude into a
+  bounded region until any tile hits altitude 6, with `_raise_point`
+  enforcing a "neighbors differ by at most 1" constraint that
+  cascades raises outward to produce smooth pyramidal islands.
+  The (4,2) / (2,4) / (3,3) parameter trio in `_make_alt` produces
+  one east-west island, one north-south island, and one rounder
+  blob, which is why the original maps look like island nations
+  rather than noise. The current Python `GameMap.randomize` at
+  [populous_game/terrain.py:373](../populous_game/terrain.py) does
+  a row-major random walk instead -- different algorithm, different
+  output. Port deferred until after M6 close-out; the existing
+  `GameMap.propagate_raise` at line 94 is already a direct
+  equivalent of `_raise_point`, so a future port mostly needs the
+  three seeded walkers from `_make_thing` plus the all-water
+  initial state.
+
 ### M6 followup: BASE_ALTITUDE_STEP fix (vertical walls regression)
 
 **Fixes and Maintenance**
