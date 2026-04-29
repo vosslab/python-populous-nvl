@@ -124,6 +124,21 @@ def test_register_default_sounds_does_not_raise():
 	audio.register_default_sounds(am)
 
 
+def test_register_default_sounds_does_not_load_music(monkeypatch):
+	"""register_default_sounds() does not load music; no track is bundled."""
+	am = audio.AudioManager()
+	am.silent = True
+	music_calls = []
+
+	def mock_load_music(path):
+		music_calls.append(path)
+
+	monkeypatch.setattr(am, 'load_music', mock_load_music)
+	monkeypatch.setattr(am, 'load_sfx', lambda name, path: None)
+	audio.register_default_sounds(am)
+	assert music_calls == []
+
+
 def test_audio_manager_initial_state():
 	"""AudioManager starts with silent=True and empty sound map."""
 	am = audio.AudioManager()

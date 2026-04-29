@@ -240,13 +240,12 @@ def register_default_sounds(audio: AudioManager) -> None:
 		'papal_place': 'Populous & Populous - The Promised Lands (1991)(Electronic Arts)[cr QTX][f Black Monks][a2]__0002918a_001286_003.wav',
 		'shield_toggle': 'Populous & Populous - The Promised Lands (1991)(Electronic Arts)[cr QTX][f Black Monks][a2]__0002918c_001282_011.wav',
 		'ui_click': 'Populous & Populous - The Promised Lands (1991)(Electronic Arts)[cr QTX][f Black Monks][a2]__0002918c_001282_013.wav',
-		'music_main': 'Populous & Populous - The Promised Lands (1991)(Electronic Arts)[cr QTX][f Black Monks][a2]__0002a410_002106_006.wav',
 	}
+	# No music track is bundled with the repo. The Amiga extraction in
+	# data/sfx/ contains only short SFX samples (max ~50 ms); the music
+	# button stays a no-op until a real track is dropped into data/mp3/.
 
 	for event_name, filename in sound_mappings.items():
 		path = os.path.join(sfx_dir, filename)
-		if event_name == 'music_main':
-			audio.load_music(path)
-		else:
-			audio.load_sfx(event_name, path)
+		audio.load_sfx(event_name, path)
 #============================================

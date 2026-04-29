@@ -1,4 +1,42 @@
+## 2026-04-29
+
+### Removals and Deprecations
+- Dropped the `music_main` mapping from
+  `populous_game/audio.py:register_default_sounds`. The bundled
+  `data/sfx/` extraction contains only short SFX samples (max ~50 ms),
+  so the previous mapping was looping a building/UI sample as if it
+  were music. The music button is now a no-op until a real long-form
+  track is dropped into `data/mp3/` and re-mapped.
+- Updated `tests/test_audio_api.py` to assert that
+  `register_default_sounds` does not load music, replacing the prior
+  MP3-preference test.
+
+### Fixes and Maintenance
+- `tools/convert_wav_to_mp3_bulk.py` now sanitizes WAV sample-rate
+  headers before invoking `lame`, mirroring the policy in
+  `populous_game/audio.py`. Amiga-extracted WAVs whose headers report
+  443 kHz were producing 48 kHz MP3s that played roughly 4x too fast
+  and sounded like buzzing; the converter now rewrites such headers to
+  11025 Hz before encoding so the resulting MP3s play correctly.
+- Extended `tests/test_convert_wav_to_mp3_bulk.py` to cover the new
+  `sanitize_wav` helper for both plausible and implausible header
+  rates.
+
 ## 2026-04-28
+
+### Fixes and Maintenance
+- Added `tools/convert_wav_to_mp3_bulk.py`, a bulk WAV-to-MP3
+  converter that scans a source directory, preserves relative
+  subdirectories, and shells out to `lame` for each `.wav` file.
+- Added `tests/test_convert_wav_to_mp3_bulk.py` to cover the converter
+  path mapping and WAV-file filtering without requiring real audio
+  assets or an installed encoder in CI.
+- `populous_game/audio.py` now prefers a generated MP3 in
+  `data/mp3/` for `music_main` and falls back to the original WAV when
+  no MP3 is present, and `populous_game/settings.py` now exposes
+  `MP3_DIR` for that asset location.
+- Added a focused audio test to confirm the music loader chooses the
+  MP3 path when one exists.
 
 ### Fixes and Maintenance
 - Added a pre-parity cleanup tranche that centralizes movement

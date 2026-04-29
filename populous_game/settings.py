@@ -146,6 +146,7 @@ MAP_OFFSET_Y: int = 64
 REPO_ROOT: str = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 GFX_DIR: str = os.path.join(REPO_ROOT, "data", "gfx")
 SFX_DIR: str = os.path.join(REPO_ROOT, "data", "sfx")
+MP3_DIR: str = os.path.join(REPO_ROOT, "data", "mp3")
 
 # === Audio defaults ===
 # When True, background music begins on game boot. When False (default),
