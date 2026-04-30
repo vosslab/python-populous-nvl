@@ -12,11 +12,15 @@ _WEAPON_SPRITE_INDICES = None
 _BUTTON_SPRITES = None
 _BUTTON_SPRITE_INDICES = None
 _UI_IMAGE = None
+_KNIGHT_PEEP = None
+
+# Shield panel portrait slot footprint, matching PEEP_WALK_FRAMES sprite size.
+KNIGHT_PEEP_SIZE: tuple = (16, 16)
 
 
 def load_all() -> None:
 	"""Load all asset sprites and textures. Call once after pygame.display.set_mode()."""
-	global _WEAPON_SPRITES, _WEAPON_SPRITE_INDICES, _BUTTON_SPRITES, _BUTTON_SPRITE_INDICES, _UI_IMAGE
+	global _WEAPON_SPRITES, _WEAPON_SPRITE_INDICES, _BUTTON_SPRITES, _BUTTON_SPRITE_INDICES, _UI_IMAGE, _KNIGHT_PEEP
 
 	# Load UI image for screen sizing. Convert to SRCALPHA so the iso-
 	# diamond hole in the center of the sprite (the black region where
@@ -80,6 +84,16 @@ def load_all() -> None:
 	for idx, name in enumerate(button_order):
 		_BUTTON_SPRITE_INDICES[name] = idx
 
+	# Load knight portrait for the shield-panel bottom-left quadrant.
+	# Used when the selected peep has weapon_type == 'knight' and is not
+	# in_house. Scaled once at load time to the portrait slot footprint.
+	# If the asset is missing, leave _KNIGHT_PEEP as None so the
+	# shield panel falls back to the normal peep walk frame.
+	knight_path = os.path.join(settings.GFX_DIR, "knight_peep.png")
+	if os.path.exists(knight_path):
+		raw = pygame.image.load(knight_path).convert_alpha()
+		_KNIGHT_PEEP = pygame.transform.smoothscale(raw, KNIGHT_PEEP_SIZE)
+
 
 def get_ui_image() -> pygame.Surface:
 	"""Get the UI background image."""
@@ -114,3 +128,14 @@ def get_button_sprite_indices() -> dict:
 	if _BUTTON_SPRITE_INDICES is None:
 		raise RuntimeError("Assets not loaded. Call assets.load_all() after pygame.display.set_mode().")
 	return _BUTTON_SPRITE_INDICES
+
+
+def get_knight_peep():
+	"""Get the knight shield-panel portrait surface, or None if unavailable.
+
+	Returns the pre-scaled knight.png surface used by the shield panel
+	when the selected peep has weapon_type == 'knight'. Returns None
+	when the asset failed to load; callers must fall back to the normal
+	peep portrait path in that case.
+	"""
+	return _KNIGHT_PEEP

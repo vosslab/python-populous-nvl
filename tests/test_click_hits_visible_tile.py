@@ -59,6 +59,12 @@ def test_click_at_projected_pixel_raises_expected_corner(preset):
 		vt = game.viewport_transform
 		cam = game.camera
 		n = settings.VISIBLE_TILE_COUNT
+		# Terrain editing is allowed only when a live player peep is
+		# visible. Pin one into the active viewport so this test remains
+		# about click projection, not spawn placement.
+		player_peep = next(p for p in game.peeps if p.faction_id == game.player_faction_id())
+		player_peep.y = float(int(cam.r) + 1)
+		player_peep.x = float(int(cam.c) + 1)
 		# Pick a sweep of in-viewport corner candidates and keep the
 		# first five that satisfy the click-test preconditions:
 		# - corner altitude 0 (the production input_controller calls

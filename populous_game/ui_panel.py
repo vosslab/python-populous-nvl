@@ -1,6 +1,7 @@
 """UI panel display and interaction (shield panel, coat-of-arms, buttons)."""
 
 import pygame
+import populous_game.assets as assets
 import populous_game.settings as settings
 import populous_game.peeps as peep
 import populous_game.sprite_geometry as sprite_geometry
@@ -277,14 +278,25 @@ class UIPanel:
 			show_flag = True
 
 		if not show_flag:
-			from populous_game.peeps import PEEP_WALK_FRAMES
-			facing = selection.who.facing
-			anim = PEEP_WALK_FRAMES.get(facing, PEEP_WALK_FRAMES['IDLE'])
-			frame_idx = selection.who.anim_frame % len(anim)
-			peep_idx = anim[frame_idx]
-			peep_sprite = sprites.get(peep_idx)
-			if peep_sprite:
-				surface.blit(peep_sprite, blason_bl)
+			# Knight portrait branch: when the selected peep is a knight,
+			# show the knight portrait at the bottom-left quadrant instead
+			# of the normal walking peep animation. Falls through to the
+			# normal peep frame path if the knight asset is unavailable.
+			knight_shield = None
+			if (selection.kind == 'peep'
+					and getattr(selection.who, 'weapon_type', None) == 'knight'):
+				knight_shield = assets.get_knight_peep()
+			if knight_shield is not None:
+				surface.blit(knight_shield, blason_bl)
+			else:
+				from populous_game.peeps import PEEP_WALK_FRAMES
+				facing = selection.who.facing
+				anim = PEEP_WALK_FRAMES.get(facing, PEEP_WALK_FRAMES['IDLE'])
+				frame_idx = selection.who.anim_frame % len(anim)
+				peep_idx = anim[frame_idx]
+				peep_sprite = sprites.get(peep_idx)
+				if peep_sprite:
+					surface.blit(peep_sprite, blason_bl)
 		else:
 			# Bâtiment ou peep en construction : drapeau animé (4,0 et 4,1)
 			frame_idx = int(pygame.time.get_ticks() / 200) % 2

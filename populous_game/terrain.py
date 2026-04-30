@@ -173,6 +173,15 @@ class GameMap:
         self.houses = []
         self.tile_surfaces = load_tile_surfaces()
         self.map_who = self._new_map_who_table()
+        # ASM map_blk / map_bk2 shadow code layer (additive; not read
+        # by production movement yet). One ASM tile-class byte per
+        # tile cell, sized grid_height x grid_width. Kept in sync
+        # with corner mutations via set_corner_altitude(),
+        # _enforce_height_constraints(), set_all_altitude(),
+        # add_house(), and the public recompute_shadow_codes() helper.
+        self.shadow_blk = self._new_shadow_table()
+        self.shadow_bk2 = self._new_shadow_table()
+        self.recompute_shadow_codes()
         self.water_timer = 0.0
         self.water_frame = 0
         self.flag_frame = 0
@@ -202,6 +211,73 @@ class GameMap:
                 if self.map_who[r][c] == 0:
                     self.map_who[r][c] = index + 1
 
+    def _new_shadow_table(self):
+        """Return a zero-filled tile-class shadow table."""
+        return [
+            [settings.ASM_TILE_WATER for _ in range(self.grid_width)]
+            for _ in range(self.grid_height)
+        ]
+
+    def _classify_tile(self, r, c):
+        """Compute the ASM tile-class code for tile (r, c).
+
+        The classification is a working hypothesis pending the WP-G2
+        atlas/audit work: water when all four corners are at 0, rock
+        when any corner reaches ALTITUDE_MAX, flat when all four
+        corners are equal (and above water), slope otherwise. Houses
+        re-stamp 0x35 over the tiles they occupy in
+        recompute_shadow_codes().
+        """
+        # Tile (r, c) is bounded by corners (r, c), (r, c+1),
+        # (r+1, c), (r+1, c+1).
+        a = self.corners[r][c]
+        b = self.corners[r][c + 1]
+        c2 = self.corners[r + 1][c]
+        d = self.corners[r + 1][c + 1]
+        if a == 0 and b == 0 and c2 == 0 and d == 0:
+            return settings.ASM_TILE_WATER
+        peak = settings.ALTITUDE_MAX
+        if a >= peak or b >= peak or c2 >= peak or d >= peak:
+            return settings.ASM_TILE_ROCK
+        if a == b == c2 == d:
+            return settings.ASM_TILE_FLAT
+        return settings.ASM_TILE_SLOPE
+
+    def _update_shadow_for_corner(self, r, c):
+        """Refresh the (up to four) tiles that touch corner (r, c)."""
+        for tr in (r - 1, r):
+            if 0 <= tr < self.grid_height:
+                for tc in (c - 1, c):
+                    if 0 <= tc < self.grid_width:
+                        code = self._classify_tile(tr, tc)
+                        self.shadow_blk[tr][tc] = code
+                        self.shadow_bk2[tr][tc] = code
+
+    def recompute_shadow_codes(self):
+        """Rebuild shadow_blk / shadow_bk2 from the current corners
+        and house occupancy. Idempotent; safe to call after any bulk
+        terrain mutation.
+        """
+        for r in range(self.grid_height):
+            for c in range(self.grid_width):
+                code = self._classify_tile(r, c)
+                self.shadow_blk[r][c] = code
+                self.shadow_bk2[r][c] = code
+        # Houses stamp a town tile-class code over their footprint.
+        # House.occupied_tiles, when present, is an iterable of (r, c).
+        for house in self.houses:
+            tiles = getattr(house, 'occupied_tiles', None)
+            if tiles is None:
+                tile_r = getattr(house, 'tile_r', None)
+                tile_c = getattr(house, 'tile_c', None)
+                if tile_r is None or tile_c is None:
+                    continue
+                tiles = ((tile_r, tile_c),)
+            for hr, hc in tiles:
+                if 0 <= hr < self.grid_height and 0 <= hc < self.grid_width:
+                    self.shadow_blk[hr][hc] = settings.ASM_TILE_TOWN
+                    self.shadow_bk2[hr][hc] = settings.ASM_TILE_TOWN
+
     def get_corner_altitude(self, r, c):
         if 0 <= r <= self.grid_height and 0 <= c <= self.grid_width:
             return self.corners[r][c]
@@ -212,6 +288,11 @@ class GameMap:
             clamped = max(settings.ALTITUDE_MIN, min(value, settings.ALTITUDE_MAX))
             if self.corners[r][c] != clamped:
                 self.corners[r][c] = clamped
+                # Keep the ASM shadow tile-class layer in sync with
+                # every altitude write. The shadow arrays are not
+                # initialized until __init__ finishes setting them.
+                if hasattr(self, 'shadow_blk'):
+                    self._update_shadow_for_corner(r, c)
                 return True
         return False
 
@@ -506,11 +587,17 @@ class GameMap:
                             if self.corners[r][c] - self.corners[nr][nc] > 1:
                                 self.corners[r][c] = self.corners[nr][nc] + 1
                                 changed = True
+        # Bulk smoothing bypassed set_corner_altitude; resync shadows.
+        if hasattr(self, 'shadow_blk'):
+            self.recompute_shadow_codes()
 
     def set_all_altitude(self, value):
         for r in range(self.grid_height + 1):
             for c in range(self.grid_width + 1):
                 self.corners[r][c] = value
+        # Bulk overwrite bypassed set_corner_altitude; resync shadows.
+        if hasattr(self, 'shadow_blk'):
+            self.recompute_shadow_codes()
 
     def randomize(self, seed=None, profile="remaster_islands"):
         """Generate an island heightmap. Dispatches on `profile`.
@@ -1002,3 +1089,7 @@ class GameMap:
 
     def add_house(self, house):
         self.houses.append(house)
+        # House placement changes tile classification for the
+        # footprint; resync the shadow code layer.
+        if hasattr(self, 'shadow_blk'):
+            self.recompute_shadow_codes()

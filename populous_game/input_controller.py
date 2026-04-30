@@ -7,6 +7,7 @@ import populous_game.settings as settings
 import populous_game.selection as selection_module
 import populous_game.peep_state as peep_state
 import populous_game.faction as faction
+import populous_game.terrain_targeting as terrain_targeting
 
 
 class InputController:
@@ -15,9 +16,10 @@ class InputController:
 	def __init__(self, game):
 		"""Initialize with a reference to the Game instance."""
 		self.game = game
-		# Drag-paint state: while a mouse button is held over the viewport,
-		# the controller repeatedly raises (LMB) or lowers (RMB) terrain at
-		# the cursor at DRAG_PAINT_INTERVAL pacing.
+		# Historical terrain-edit state. Terrain clicks are one-shot now,
+		# matching the original-style "one level per click" behavior, but
+		# these attributes stay so older tests and reset code can inspect
+		# a stable controller shape.
 		self._drag_paint_button: int | None = None
 		self._drag_paint_last_time: float = 0.0
 		# Cursor indices for cycling find-buttons. Each remembers the
@@ -441,9 +443,8 @@ class InputController:
 					rf, cf = self.game.viewport_transform.screen_to_world(mx, my)
 					r = int(round(rf))
 					c = int(round(cf))
-					# Verify click is in the visible 8x8 camera zone
-					start_r, end_r, start_c, end_c = self.game.game_map.get_visible_bounds(self.game.camera.r, self.game.camera.c)
-					if start_r <= r <= end_r and start_c <= c <= end_c:
+					# Verify click is in the visible 8x8 camera zone.
+					if terrain_targeting.is_visible_corner(self.game, r, c):
 						if self.game.mode_manager.pending_power:
 							if terrain_button == 1:
 								# Activate pending power at target
@@ -478,21 +479,14 @@ class InputController:
 								self._handle_ui_click('_raise_terrain', held=False)
 							return True
 						elif not self.game.mode_manager.papal_mode and not self.game.mode_manager.shield_mode:
-							# Initial click fires one paint immediately, then
-							# drag-paint waits DRAG_PAINT_INITIAL_DELAY before
-							# auto-repeating. After that, paints happen every
-							# DRAG_PAINT_INTERVAL. Bias the next-fire timestamp
-							# so a normal click (under the initial delay) does
-							# not register as multiple paints.
-							grace = settings.DRAG_PAINT_INITIAL_DELAY - settings.DRAG_PAINT_INTERVAL
+							if not terrain_targeting.can_edit_terrain_at(self.game, r, c):
+								return True
 							if terrain_button == 1:
 								self.game.game_map.raise_corner(r, c)
-								self._drag_paint_button = 1
-								self._drag_paint_last_time = time.time() + grace
 							elif terrain_button == 3:
 								self.game.game_map.lower_corner(r, c)
-								self._drag_paint_button = 3
-								self._drag_paint_last_time = time.time() + grace
+							self._drag_paint_button = None
+							self._drag_paint_last_time = time.time()
 			elif event.type == pygame.MOUSEBUTTONUP:
 				# Click release: stop continuous scroll and drag-paint
 				self.game.mode_manager.dpad_held_direction = None
@@ -504,43 +498,13 @@ class InputController:
 		return True
 
 	#============================================
-	# M7: drag-to-paint terrain + mouse-wheel minimap zoom
+	# M7: mouse-wheel minimap zoom
 	#============================================
 
 	def _handle_drag_paint(self, event) -> None:
-		"""Continue raising/lowering terrain while a mouse button is held."""
-		if self._drag_paint_button is None:
-			return
-		if self.game.app_state.is_simulation_paused():
-			return
-		now = time.time()
-		if now - self._drag_paint_last_time < settings.DRAG_PAINT_INTERVAL:
-			return
-		self._drag_paint_last_time = now
-		mx, my = event.pos
-		mx //= self.game.display_scale
-		my //= self.game.display_scale
-		if not self.game.view_rect.collidepoint(mx, my):
-			return
-		# Project drag-paint pointer through the active viewport
-		# transform; round each axis to land on the nearest integer
-		# corner.
-		rf, cf = self.game.viewport_transform.screen_to_world(mx, my)
-		r = int(round(rf))
-		c = int(round(cf))
-		start_r, end_r, start_c, end_c = self.game.game_map.get_visible_bounds(
-			self.game.camera.r, self.game.camera.c
-		)
-		if not (start_r <= r <= end_r and start_c <= c <= end_c):
-			return
-		if (self.game.mode_manager.pending_power
-			or self.game.mode_manager.papal_mode
-			or self.game.mode_manager.shield_mode):
-			return
-		if self._drag_paint_button == 1:
-			self.game.game_map.raise_corner(r, c)
-		elif self._drag_paint_button == 3:
-			self.game.game_map.lower_corner(r, c)
+		"""Ignore held-mouse terrain repeat; clicks already apply one level."""
+		del event
+		self._drag_paint_button = None
 
 	def _handle_mouse_wheel(self, event) -> None:
 		"""Adjust minimap zoom when the wheel scrolls over the minimap."""

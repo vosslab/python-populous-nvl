@@ -102,6 +102,14 @@ separate runtime files.
     referenced; safe to remove during the WP-G5 / asset-cleanup pass
     once references are confirmed clear.
 
+- `AmigaUI_upscayl_4x_high-fidelity-4x.png`
+- `AmigaUI_click_upscayl_4x_high-fidelity-4x.png`
+  - 4x upscaled versions of the active and click-state UI sheets
+    intended for the larger HUD presets. Same atlas layout, four
+    times the pixel dimensions. Renderer/asset code can pick the
+    upscaled sheet based on the active scale instead of running an
+    interactive upscale at load time.
+
 - `ButtonUI.png`
   - Button UI atlas. 5 rows x 5 cols, 34 x 17 px cells. Action-name
     mapping lives in `button_order` inside

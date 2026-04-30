@@ -1,4 +1,4 @@
-"""Tests for drag-to-paint terrain (M7)."""
+"""Tests for one-click terrain targeting."""
 
 import os
 os.environ['SDL_VIDEODRIVER'] = 'dummy'
@@ -9,7 +9,7 @@ import pygame
 
 
 def test_drag_paint_state_initializes_clean():
-	"""Fresh InputController has no drag-paint button held."""
+	"""Fresh InputController has no held-paint button armed."""
 	from populous_game.game import Game
 	game = Game()
 	assert game.input_controller._drag_paint_button is None
@@ -17,7 +17,7 @@ def test_drag_paint_state_initializes_clean():
 
 
 def test_drag_paint_cleared_on_button_up():
-	"""Releasing the button clears the drag-paint state."""
+	"""Releasing the button clears any legacy held-paint state."""
 	from populous_game.game import Game
 	game = Game()
 	game.app_state.transition_to(game.app_state.PLAYING)
@@ -31,15 +31,15 @@ def test_drag_paint_cleared_on_button_up():
 
 
 def test_drag_paint_respects_pacing():
-	"""Two motion events back-to-back should only paint at most once due to pacing."""
+	"""Motion events do not repeat terrain edits after a click."""
 	from populous_game.game import Game
 	game = Game()
 	game.app_state.transition_to(game.app_state.PLAYING)
 	game.game_map.set_all_altitude(3)
 
-	# Prime drag state
+	# Prime legacy drag state; motion still must not paint.
 	game.input_controller._drag_paint_button = 1
-	game.input_controller._drag_paint_last_time = time.time()  # block immediate paint
+	game.input_controller._drag_paint_last_time = time.time() - 999.0
 
 	# Count raise_corner calls via a wrapper
 	calls = []
@@ -56,4 +56,5 @@ def test_drag_paint_respects_pacing():
 		ev = pygame.event.Event(pygame.MOUSEMOTION, pos=(mx, my), rel=(0, 0), buttons=(1, 0, 0))
 		game.input_controller._handle_drag_paint(ev)
 
-	assert len(calls) == 0  # both blocked by pacing window
+	assert len(calls) == 0
+	assert game.input_controller._drag_paint_button is None

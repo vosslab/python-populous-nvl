@@ -4,6 +4,7 @@ import pygame
 import time
 import populous_game.settings as settings
 import populous_game.layout as layout_module
+import populous_game.terrain_targeting as terrain_targeting
 
 
 class Renderer:
@@ -398,8 +399,7 @@ class Renderer:
 				self.game.ui_panel.draw_shield_marker(self.game.internal_surface, self.game.selection.who, self.game.selection.kind, cam_r, cam_c, self.game.game_map)
 
 	def _draw_cursor(self) -> None:
-		"""Draw cursor (star) on nearest terrain corner under mouse."""
-		cam_r, cam_c = self.game.camera.r, self.game.camera.c
+		"""Draw the terrain targeting cursor on the nearest ground corner."""
 		mouse_x, mouse_y = pygame.mouse.get_pos()
 		mouse_x //= self.game.display_scale
 		mouse_y //= self.game.display_scale
@@ -414,18 +414,24 @@ class Renderer:
 			grid_r = int(round(rf))
 			grid_c = int(round(cf))
 
-			# Restrict star to visible bounds
-			start_r, end_r, start_c, end_c = self.game.game_map.get_visible_bounds(cam_r, cam_c)
-			if start_r <= grid_r < end_r and start_c <= grid_c < end_c:
+			# Restrict target cursor to visible bounds.
+			if terrain_targeting.is_visible_corner(self.game, grid_r, grid_c):
 				alt = self.game.game_map.get_corner_altitude(grid_r, grid_c)
 				sx, sy = self.game.viewport_transform.world_to_screen(grid_r, grid_c, alt)
+				allowed = terrain_targeting.can_edit_terrain_at(self.game, grid_r, grid_c)
+				self._draw_ground_target_cursor(sx, sy, allowed)
 
-				# Draw a simple star (6-pointed)
-				star_tile = self.game.game_map.tile_surfaces.get((1, 0))
-				if star_tile:
-					# star_tile is cached scaled by TERRAIN_SCALE; match the offset.
-					blit_x = sx - settings.TILE_HALF_W * settings.TERRAIN_SCALE
-					self.game.internal_surface.blit(star_tile, (blit_x, sy))
+	def _draw_ground_target_cursor(self, sx: int, sy: int, allowed: bool) -> None:
+		"""Draw '+' when terrain can be edited, or '[]' when blocked."""
+		scale = max(1, settings.TERRAIN_SCALE)
+		half = 4 * scale
+		color = settings.WHITE if allowed else settings.RED
+		if allowed:
+			pygame.draw.line(self.game.internal_surface, color, (sx - half, sy), (sx + half, sy), scale)
+			pygame.draw.line(self.game.internal_surface, color, (sx, sy - half), (sx, sy + half), scale)
+			return
+		rect = pygame.Rect(sx - half, sy - half, half * 2 + 1, half * 2 + 1)
+		pygame.draw.rect(self.game.internal_surface, color, rect, scale)
 
 	def _draw_minimap(self) -> None:
 		"""Draw minimap."""

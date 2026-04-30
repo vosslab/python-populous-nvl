@@ -1,6 +1,50 @@
 ## 2026-04-30
 
 ### Additions and New Features
+- Round 2 Patch 2: `populous_game/terrain.py` adds the ASM tile-class
+  shadow layer to `GameMap`. New `shadow_blk` and `shadow_bk2`
+  arrays (`grid_height x grid_width`) classify each tile as one of
+  the ASM codes (`ASM_TILE_WATER`, `ASM_TILE_FLAT`, `ASM_TILE_SLOPE`,
+  `ASM_TILE_ROCK`, `ASM_TILE_TOWN`, ...) added to
+  `populous_game/settings.py`. New `_classify_tile()`,
+  `_update_shadow_for_corner()`, and `recompute_shadow_codes()`
+  helpers keep the shadow in sync with `set_corner_altitude()`,
+  `_enforce_height_constraints()`, `set_all_altitude()`, and
+  `add_house()`. Production rendering and pathfinding do not consume
+  the shadow yet. Pinned by `tests/test_terrain_shadow_codes.py`.
+- Round 2 Patch 1: `populous_game/settings.py` adds the ASM
+  directional and tile-class tables ported verbatim from
+  `asm/populous_prg.asm`: `ASM_OPPOSITE` (8 entries),
+  `ASM_TO_OFFSET` (8 signed flat-byte deltas), `ASM_OFFSET_VECTOR`
+  (25 entries for the local movement scan), and `ASM_BIG_CITY`
+  (9 entries for `_check_life` thresholds). Pinned by
+  `tests/test_asm_tables.py`.
+- Expanded [data/gfx/README.md](../data/gfx/README.md) as the
+  graphics folder overview and policy doc, and expanded
+  [data/gfx/ATLAS_LAYOUT.md](../data/gfx/ATLAS_LAYOUT.md) as the
+  technical reference for source-pixel geometry, runtime mappings,
+  tile banks, ASM parity notes, and open atlas-audit items.
+- Round 2 Patch 10: `populous_game/assets.py` loads
+  `data/gfx/knight_peep.png` once at startup, scales it to the 16x16
+  shield-portrait footprint, and exposes `get_knight_peep()`.
+  `populous_game/ui_panel.py` `draw_shield_panel` now selects the
+  knight portrait for peeps with `weapon_type == 'knight'` (and
+  `not in_house`) at the bottom-left `blason_bl` slot, falling back
+  to the existing `PEEP_WALK_FRAMES` path if the asset is missing.
+
+### Behavior or Interface Changes
+- Renamed `data/gfx/knight.png` to `data/gfx/knight_peep.png` and
+  `data/gfx/Knight.gif` to `data/gfx/knight_peep.gif` to match the
+  lowercase asset-naming convention. The animated GIF is the future
+  source for world walking frames; the static PNG is the shield
+  portrait used now.
+
+### Developer Tests and Notes
+- `tests/test_ui_panel.py` adds two focused tests covering the
+  knight portrait branch and the missing-asset fallback. Lint and
+  power-rules suites stay green.
+
+
 - Patch 1: `populous_game/peeps.py` Peep gains additive ASM shadow
   fields (`asm_flags`, `movement_substate`, `town_counter`,
   `linked_peep`, `remembered_target`, `terrain_marker`,

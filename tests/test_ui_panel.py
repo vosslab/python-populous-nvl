@@ -219,6 +219,83 @@ class TestUIPanel:
 		name = panel._get_weapon_name(MockPeep(), 'peep')
 		assert name == 'Knight'
 
+	def _knight_shield_test_setup(self, monkeypatch, knight_surface):
+		"""Shared setup for knight shield-panel branch tests."""
+		import populous_game.assets as assets
+		import populous_game.peeps as peeps_mod
+
+		monkeypatch.setattr(assets, 'get_knight_peep', lambda: knight_surface)
+		monkeypatch.setattr(peeps_mod.Peep, 'get_sprites', staticmethod(lambda: {}))
+		# Suppress unrelated bar drawing so the test isolates the
+		# portrait branch.
+		monkeypatch.setattr(pygame.draw, 'rect', lambda *a, **kw: None)
+
+		if not pygame.font.get_init():
+			pygame.font.init()
+		font = pygame.font.Font(None, 12)
+		return font
+
+	def test_draw_shield_panel_knight_uses_knight_portrait(self, monkeypatch):
+		"""Knight peep portrait branch should blit the knight surface
+		at blason_bl instead of pulling a frame from PEEP_WALK_FRAMES.
+		"""
+		game = MockGame()
+		panel = ui_panel.UIPanel(game)
+
+		knight_surface = pygame.Surface((16, 16))
+		font = self._knight_shield_test_setup(monkeypatch, knight_surface)
+
+		class MockPeep:
+			life = 10
+			weapon_type = 'knight'
+			in_house = False
+			facing = 'IDLE'
+			anim_frame = 0
+			is_enemy = False
+
+		class MockSelection:
+			kind = 'peep'
+			who = MockPeep()
+
+		blits = []
+
+		class RecordingSurface(pygame.Surface):
+			def blit(self, src, dest, *a, **kw):
+				blits.append((src, dest))
+				return super().blit(src, dest, *a, **kw)
+
+		surface = RecordingSurface((512, 64))
+
+		panel.draw_shield_panel(surface, MockSelection(), [], {}, None, font)
+
+		# Expect the knight surface blitted at blason_bl = (271, 23).
+		assert any(src is knight_surface and dest == (271, 23) for src, dest in blits)
+
+	def test_draw_shield_panel_knight_falls_back_when_asset_missing(self, monkeypatch):
+		"""When knight portrait is unavailable, render path falls back
+		to the existing peep walk-frame branch without crashing.
+		"""
+		game = MockGame()
+		panel = ui_panel.UIPanel(game)
+
+		font = self._knight_shield_test_setup(monkeypatch, None)
+
+		class MockPeep:
+			life = 10
+			weapon_type = 'knight'
+			in_house = False
+			facing = 'IDLE'
+			anim_frame = 0
+			is_enemy = False
+
+		class MockSelection:
+			kind = 'peep'
+			who = MockPeep()
+
+		surface = pygame.Surface((512, 64))
+		# Should not raise even though the sprite registry is empty.
+		panel.draw_shield_panel(surface, MockSelection(), [], {}, None, font)
+
 	def test_hit_test_button_all_buttons_reachable(self):
 		"""Test that all defined buttons are reachable at their center."""
 		game = MockGame()

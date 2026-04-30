@@ -281,6 +281,54 @@ ASM_VALID_MOVE_OUT_OF_BOUNDS_CODE: int = 1
 ASM_VALID_MOVE_ROCK_CODE: int = 2
 ASM_VALID_MOVE_EMPTY_CODE: int = 3
 
+# ASM directional and tile-class tables ported verbatim from the
+# Amiga Populous source. See asm/populous_prg.asm for the raw bytes
+# and asm/PEEPS_BEHAVIOR.md for routine-level usage notes. These are
+# additive shadow contracts; production movement (A* / wandering)
+# does not consume them yet.
+
+# _opposite (asm/populous_prg.asm:24262, addr $000517A8). For each of
+# 8 directions, the index of the opposite direction. Used by ASM peep
+# routines that flip facing on collision or rebound.
+ASM_OPPOSITE: tuple = (4, 5, 6, 7, 0, 1, 2, 3)
+
+# _to_offset (asm/populous_prg.asm:24272, addr $0005180A). Converts a
+# direction index 0..7 into a signed flat-byte offset in the ASM
+# 64-wide map (negative values walk to the previous row). 8 entries.
+ASM_TO_OFFSET: tuple = (-64, -63, 1, 65, 64, 63, -1, -65)
+
+# _offset_vector (asm/populous_prg.asm:24274, addr $0005181A). Flat
+# byte offsets used by _where_do_i_go for the multi-radius local
+# movement scan. 25 entries: 12 DC.L longs (24 16-bit shorts) plus a
+# trailing DC.W short. Signed values cover positive and negative row
+# strides on the 64-wide map.
+ASM_OFFSET_VECTOR: tuple = (
+    0, -64, 1, 64, -1, -63, 65, 63,
+    -65, -128, 2, 128, -2, -126, 130, 126,
+    -130, -127, -62, 66, 129, 127, 62, -66,
+    -129,
+)
+
+# ASM tile-class codes used by the _map_blk / _map_bk2 shadow layer.
+# These are the byte values stored in the GameMap shadow arrays; the
+# numeric values mirror the ASM map-block table from
+# asm/MAP_GEN_REPORT.md and asm/PEEPS_BEHAVIOR.md. Production
+# rendering does not consume these yet; they back the additive
+# map_blk_code() / map_bk2_code() helpers.
+ASM_TILE_WATER: int = 0x00
+ASM_TILE_FLAT: int = 0x0F
+ASM_TILE_SLOPE: int = 0x2A
+ASM_TILE_ROCK: int = 0x2F
+ASM_TILE_TOWN: int = 0x35
+ASM_TILE_DECORATION: int = 0x42
+ASM_TILE_OUT_OF_BOUNDS: int = 0xFF
+
+# _big_city (asm/populous_prg.asm:24284, addr $00051862). Population
+# threshold table referenced by _check_life when grading whether a
+# build site qualifies as a "big city" tier. 9 entries; raw bytes
+# decode to a flat list of small integers.
+ASM_BIG_CITY: tuple = (42, 44, 43, 44, 43, 41, 41, 41, 41)
+
 PEEP_LIFE_REFERENCE: float = 50.0  # baseline life for damage-scaling math
 PEEP_LIFE_MAX: float = 200.0       # gameplay-scaled cap when joining forces
 COMBAT_PEEP_DPS: float = 10.0      # damage per second peep-vs-peep at reference life

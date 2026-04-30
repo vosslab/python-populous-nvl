@@ -16,6 +16,36 @@ DIAGONAL_COST: float = 1.41421356
 ORTHOGONAL_COST: float = 1.0
 
 #============================================
+# ASM shadow-code accessors (additive, terrain-only)
+#============================================
+
+
+def map_blk_code(game_map, r: int, c: int) -> int:
+	"""Return the ASM map_blk tile-class code at tile (r, c).
+
+	Reads from the GameMap.shadow_blk array maintained in
+	populous_game/terrain.py. Out-of-bounds coordinates return
+	ASM_TILE_OUT_OF_BOUNDS instead of raising; callers can use that
+	sentinel as a movement-blocked signal in the same way the ASM
+	does for off-map probes. This helper is referentially transparent
+	for a stable shadow_blk array.
+	"""
+	if 0 <= r < game_map.grid_height and 0 <= c < game_map.grid_width:
+		return game_map.shadow_blk[r][c]
+	return settings.ASM_TILE_OUT_OF_BOUNDS
+
+
+def map_bk2_code(game_map, r: int, c: int) -> int:
+	"""Return the ASM map_bk2 secondary tile-class code at tile
+	(r, c). See map_blk_code() for semantics; the bk2 layer carries
+	the same ASM tile codes today and is reserved for routines that
+	branch on the secondary classification."""
+	if 0 <= r < game_map.grid_height and 0 <= c < game_map.grid_width:
+		return game_map.shadow_bk2[r][c]
+	return settings.ASM_TILE_OUT_OF_BOUNDS
+
+
+#============================================
 # Walkability computation
 #============================================
 
