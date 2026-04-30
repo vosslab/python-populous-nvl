@@ -74,8 +74,6 @@ class InputController:
 			self.game.mode_manager.pending_power = None
 		elif action == '_sleep':
 			self._handle_sleep_button()
-		elif action == '_music':
-			self.game.audio_manager.toggle_music()
 		elif action == '_fx':
 			self.game.audio_manager.toggle_sfx_mute()
 		elif action == '_find_battle':

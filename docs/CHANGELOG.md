@@ -1,5 +1,40 @@
 ## 2026-04-30
 
+### Fixes and Maintenance
+- Round 2 review fixes (post code-reviewer pass):
+  - `populous_game/terrain.py` `_randomize_islands` now calls
+    `recompute_shadow_codes()` after the
+    `self.corners = best_corners` swap so the ASM tile-class shadow
+    matches the restored attempt instead of the failed last attempt.
+  - `populous_game/peeps.py` `Peep.transition(DEAD)` now sets
+    `self.dead = True` atomically alongside the state assignment so
+    the `dead` flag and `state == DEAD` cannot drift; the duplicate
+    write at the life=0 site is removed.
+  - `populous_game/peep_helpers.py` `cleanup_dead_peep` now also
+    clears a `faction_magnet` attribute when present and is
+    relabeled as a "Python compatibility helper, not full ASM
+    `_zero_population` parity." `_SHADOW_FIELDS_CLEARED_ON_DEATH`
+    is the single list keeping helper and tests in lock-step.
+  - `populous_game/peeps.py` moves `import populous_game.peep_helpers`
+    to module top (no real circular import was being masked).
+  - `populous_game/peep_helpers.py` `check_life_result` docstring
+    now correctly describes the 3x3 ring as matching the decoded
+    first nine entries of `ASM_OFFSET_VECTOR` rather than claiming
+    it iterates the constant directly.
+  - `populous_game/atlas_metadata.py` namedtuple field tuple is
+    declared with tab-only indentation to satisfy
+    `tests/test_indentation.py` (no behavior change).
+
+### Removals and Deprecations
+- Removed the `_music` shield-panel button stub. Clicking it never
+  produced an observable effect because no music track is bundled
+  in `data/sfx/` and the `audio_manager.toggle_music()` path had no
+  source to toggle. Deleted from `populous_game/ui_panel.py`
+  buttons map and `populous_game/input_controller.py` action
+  dispatch. Audio infrastructure (`AudioManager.toggle_music()`)
+  stays intact for future use when a real music track lands.
+  Removed obsolete `tests/test_effect_music_toggle.py`.
+
 ### Additions and New Features
 - Round 2 Patch 10a: `populous_game/atlas_metadata.py` lands the
   named atlas-layout layer (`AtlasLayout`, `frame_rect()`, sheet

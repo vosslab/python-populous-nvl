@@ -4,6 +4,7 @@ import math
 import populous_game.settings as settings
 import populous_game.faction as faction
 import populous_game.peep_state as peep_state
+import populous_game.peep_helpers as peep_helpers
 
 # Sprite size in the source sprite sheet
 SPRITE_EXTRACT_SIZE = 16
@@ -147,10 +148,12 @@ class Peep:
         # DEAD is universally reachable from any non-DEAD state.
         if new_state == peep_state.PeepState.DEAD:
             self.state = new_state
-            # Clear ASM shadow bookkeeping (linked peep, remembered
-            # target, terrain marker, shield opponent, last move
-            # offset) so later code cannot see stale references.
-            import populous_game.peep_helpers as peep_helpers
+            # Keep self.dead and state in lock-step so every death
+            # path flips both atomically. Clear ASM shadow bookkeeping
+            # (linked peep, remembered target, terrain marker, shield
+            # opponent, last move offset) so later code cannot see
+            # stale references.
+            self.dead = True
             peep_helpers.cleanup_dead_peep(self)
             return
         if self.state == peep_state.PeepState.DEAD:
@@ -185,7 +188,8 @@ class Peep:
         self.life -= dt * 1.0
         if self.life <= 0:
             self.life = 0
-            self.dead = True
+            # transition(DEAD) sets self.dead = True and clears shadow
+            # bookkeeping; do not duplicate the flag write here.
             self.transition(peep_state.PeepState.DEAD)
             return
 
@@ -311,7 +315,6 @@ class Peep:
             self.state = peep_state.PeepState.DEAD
             # Mirror the cleanup that transition() runs for normal
             # death so shadow bookkeeping is consistent for both paths.
-            import populous_game.peep_helpers as peep_helpers
             peep_helpers.cleanup_dead_peep(self)
 
             if excess_life > 0:

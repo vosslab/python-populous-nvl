@@ -51,7 +51,9 @@ class UIPanel:
 			# tools/draw_button_overlay.py debug script (M2 review) renders
 			# these rects on top of the HUD for visual confirmation.
 			'_fx':            {'c': (250, 189), 'hw': 10, 'hh': 6},
-			'_music':         {'c': (275, 189), 'hw': 10, 'hh': 6},
+			# _music removed: no music track is bundled in data/sfx/, so
+			# the button was a silent stub. Audio infra (toggle_music)
+			# stays in audio.py for future use when a real track lands.
 			'_sleep':         {'c': (304, 189), 'hw': 10, 'hh': 6},
 		}
 

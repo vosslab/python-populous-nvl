@@ -683,6 +683,11 @@ class GameMap:
         # only for runtime resilience.
         if best_corners is not None:
             self.corners = best_corners
+            # Bulk swap of the corners array bypasses set_corner_altitude;
+            # resync the ASM tile-class shadow so it reflects the
+            # restored best attempt rather than the last failed one.
+            if hasattr(self, 'shadow_blk'):
+                self.recompute_shadow_codes()
         print(
             f"[terrain.randomize] WARNING: no attempt passed "
             f"validation; using best score={best_score:.3f} "
