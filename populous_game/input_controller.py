@@ -403,6 +403,10 @@ class InputController:
 				ui_clicked = False
 				if event.button == 1:
 					action = self.game.ui_panel.hit_test_button(logical_mx, logical_my)
+					if action is None:
+						# Back-compat for headless posted events that still use
+						# 320x200 logical coords scaled only by display_scale.
+						action = self.game.ui_panel.hit_test_button(mx, my)
 					if action is not None:
 						self._handle_ui_click(action, held=True)
 						ui_clicked = True
@@ -467,8 +471,7 @@ class InputController:
 						elif self.game.mode_manager.papal_mode:
 							if terrain_button == 1:
 								# Place/move papal (only one) on the NW case
-								self.game.mode_manager.papal_position = (max(r - 1, 0), max(c - 1, 0))
-								self.game.mode_manager.papal_mode = False  # Deactivate mode after click
+								self.game.mode_manager.set_papal_position(r, c)
 							elif terrain_button == 3:
 								# Cancel papal mode and return to raise_terrain
 								self.game.mode_manager.papal_mode = False

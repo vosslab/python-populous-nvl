@@ -5,6 +5,7 @@ and altitude delta constraints (cliffs).
 """
 
 import heapq
+import populous_game.settings as settings
 
 
 #============================================
@@ -65,6 +66,31 @@ def _classify_move(from_r: int, from_c: int, to_r: int, to_c: int, game_map) -> 
 	if abs(to_alt - from_alt) > 1:
 		return False, "cliff"
 	return True, "ok"
+
+def _cell_has_marker(game_map, marker_name: str, r: int, c: int) -> bool:
+	"""Return True when an optional map marker set contains a cell."""
+	markers = getattr(game_map, marker_name, None)
+	if markers is None:
+		return False
+	return (r, c) in markers
+
+def valid_move_code(from_r: int, from_c: int, to_r: int, to_c: int, game_map) -> int:
+	"""Return an ASM-shaped movement code for a destination cell.
+
+	The original `_valid_move` reports table-state codes instead of a
+	boolean. This helper is additive: existing A* callers continue using
+	`_is_valid_move`, which keeps the current cliff and walkability rules.
+	"""
+	del from_r, from_c
+	if not (0 <= to_r < game_map.grid_height and 0 <= to_c < game_map.grid_width):
+		return settings.ASM_VALID_MOVE_OUT_OF_BOUNDS_CODE
+	if (_cell_has_marker(game_map, "rock_cells", to_r, to_c)
+			or _cell_has_marker(game_map, "blocked_cells", to_r, to_c)):
+		return settings.ASM_VALID_MOVE_ROCK_CODE
+	to_alt = _get_cell_altitude(game_map, to_r, to_c)
+	if to_alt <= 0:
+		return settings.ASM_VALID_MOVE_EMPTY_CODE
+	return settings.ASM_VALID_MOVE_OPEN_CODE
 
 #============================================
 # Movement cost and validity

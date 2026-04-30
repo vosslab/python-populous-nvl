@@ -181,6 +181,29 @@ class Game:
 		self.power_manager = powers.PowerManager(self)
 
 
+	def _has_peep_capacity(self, pending_count: int = 0) -> bool:
+		"""Return True when a new peep can be allocated."""
+		return len(self.peeps) + pending_count < settings.ASM_PEEP_CAP
+
+	def _create_peep_if_capacity(self, grid_r: int, grid_c: int, faction_id: int,
+			pending_count: int = 0):
+		"""Create a peep if the ASM population cap has not been reached."""
+		if not self._has_peep_capacity(pending_count):
+			return None
+		return peep.Peep(grid_r, grid_c, self.game_map, faction_id=faction_id)
+
+	def _append_existing_peep_if_capacity(self, peep_obj) -> bool:
+		"""Append an existing peep if the ASM population cap allows it."""
+		if not self._has_peep_capacity():
+			return False
+		self.peeps.append(peep_obj)
+		return True
+
+	def _recompute_map_who(self) -> None:
+		"""Rebuild shadow peep occupancy bookkeeping when available."""
+		if hasattr(self.game_map, 'recompute_map_who'):
+			self.game_map.recompute_map_who(self.peeps)
+
 	def _update_scanline_surface(self):
 		w, h = self.screen.get_size()
 		self.scanline_surface = pygame.Surface((w, h), pygame.SRCALPHA)
@@ -191,7 +214,10 @@ class Game:
 	def _spawn_peep_at_random_land(self, count: int, row_min: int, row_max: int,
 			col_min: int, col_max: int, faction_id: int, spawn_label: str) -> None:
 		"""Spawn peeps in a region, falling back to the nearest land tile."""
+		spawned = 0
 		for _ in range(count):
+			if not self._has_peep_capacity():
+				break
 			r = random.randint(row_min, row_max)
 			c = random.randint(col_min, col_max)
 			if self.game_map.get_corner_altitude(r, c) <= 0:
@@ -201,7 +227,13 @@ class Game:
 						f"Cannot spawn {spawn_label}: no land tile exists on the map"
 					)
 				r, c = land
-			self.peeps.append(peep.Peep(r, c, self.game_map, faction_id=faction_id))
+			new_peep = self._create_peep_if_capacity(r, c, faction_id)
+			if new_peep is None:
+				break
+			self.peeps.append(new_peep)
+			spawned += 1
+		self._recompute_map_who()
+		return spawned
 
 	def spawn_initial_peeps(self, count: int, faction_id: int = None) -> None:
 		"""Spawn initial peeps for a faction near top-left of the grid.
@@ -220,7 +252,7 @@ class Game:
 			return
 		if faction_id is None:
 			faction_id = faction.Faction.PLAYER
-		self._spawn_peep_at_random_land(
+		spawned = self._spawn_peep_at_random_land(
 			count,
 			0,
 			settings.GRID_HEIGHT - 1,
@@ -229,6 +261,8 @@ class Game:
 			faction_id,
 			"peep",
 		)
+		if faction_id == faction.Faction.PLAYER:
+			self.score += spawned * 10
 
 	def spawn_enemy_peeps(self, count: int = 5) -> None:
 		"""Spawn enemy peeps near bottom-right of the grid.
@@ -308,6 +342,8 @@ class Game:
 		"""Reset game state for a new session or return to menu."""
 		self.peeps.clear()
 		self.game_map.houses.clear()
+		if hasattr(self.game_map, 'reset_map_who'):
+			self.game_map.reset_map_who()
 		self.score = 0
 		for name in self.power_manager.cooldowns:
 			self.power_manager.cooldowns[name] = 0.0
@@ -318,7 +354,7 @@ class Game:
 		self.selection.kind = None
 		self.mode_manager.papal_mode = False
 		self.mode_manager.shield_mode = False
-		self.mode_manager.papal_position = None
+		self.mode_manager.clear_magnets()
 		self.mode_manager.shield_target = None
 		self.input_controller.reset_find_cursors()
 
@@ -328,6 +364,8 @@ class Game:
 		Per asm/PEEPS_REPORT.md sections 4.3-4.4: peeps on the same tile or
 		adjacent tiles may engage in combat or force joining.
 		"""
+		for p in self.peeps:
+			combat.clear_stale_fight_metadata(p, self.peeps)
 		# O(n^2) peep-vs-peep combat (acceptable for small peep counts)
 		for i, peep_a in enumerate(self.peeps):
 			for peep_b in self.peeps[i + 1 :]:
@@ -339,6 +377,7 @@ class Game:
 						combat.join_forces(peep_a, peep_b)
 					# Enemy factions: apply mutual damage
 					else:
+						combat.mark_peep_vs_peep_fight(peep_a, peep_b)
 						combat.damage_peep_vs_peep(peep_a, peep_b, dt)
 						combat.damage_peep_vs_peep(peep_b, peep_a, dt)
 
@@ -393,13 +432,16 @@ class Game:
 					self.selection.kind = 'house'
 		# Add excess peeps generated during construction
 		if hasattr(self.game_map, '_pending_peep'):
-			self.peeps.extend(self.game_map._pending_peep)
+			for pending_peep in self.game_map._pending_peep:
+				self._append_existing_peep_if_capacity(pending_peep)
 			self.game_map._pending_peep.clear()
+			self._recompute_map_who()
 
 		# Apply combat resolution: peep-vs-peep, peep-vs-house, force joining
 		self._apply_combat_resolution(dt)
 
 		self.peeps = [p for p in self.peeps if not p.is_removable()]
+		self._recompute_map_who()
 
 		# AI opponent decision-making
 		self.ai_opponent.update(dt)
@@ -416,27 +458,34 @@ class Game:
 			if house.destroyed:
 				# Terrain no longer flat, destroy house and recover peep with faction and capped life
 				self.audio_manager.play_sfx('building_destroy')
-				new_peep = peep.Peep(house.r, house.c, self.game_map, faction_id=house.faction)
-				new_peep.life = min(house.life, settings.PEEP_LIFE_MAX)
-				new_peep.weapon_type = house.building_type
-				new_peeps.append(new_peep)
-				if self.selection.kind == 'house' and self.selection.who == house:
+				new_peep = self._create_peep_if_capacity(
+					house.r, house.c, house.faction, pending_count=len(new_peeps)
+				)
+				if new_peep is not None:
+					new_peep.life = min(house.life, settings.PEEP_LIFE_MAX)
+					new_peep.weapon_type = house.building_type
+					new_peeps.append(new_peep)
+				if new_peep is not None and self.selection.kind == 'house' and self.selection.who == house:
 					self.selection.who = new_peep
 					self.selection.kind = 'peep'
 			else:
 				houses_to_keep.append(house)
 				if house.can_spawn_peep():
 					self.audio_manager.play_sfx('peep_spawn')
-					new_peep = peep.Peep(house.r, house.c, self.game_map, faction_id=house.faction)
-					# Give building weapon to spawning peep
-					new_peep.weapon_type = house.building_type
-					# Peep exits with building max health
-					new_peep.life = house.max_life
-					new_peeps.append(new_peep)
-					# Building returns to 1 health
-					house.life = 1.0
+					new_peep = self._create_peep_if_capacity(
+						house.r, house.c, house.faction, pending_count=len(new_peeps)
+					)
+					if new_peep is not None:
+						# Give building weapon to spawning peep
+						new_peep.weapon_type = house.building_type
+						# Peep exits with building max health
+						new_peep.life = house.max_life
+						new_peeps.append(new_peep)
+						# Building returns to 1 health
+						house.life = 1.0
 		self.game_map.houses = houses_to_keep
 		self.peeps.extend(new_peeps)
+		self._recompute_map_who()
 
 		# Keep selection valid if target still exists.
 		if self.selection.kind == 'peep' and self.selection.who not in self.peeps:

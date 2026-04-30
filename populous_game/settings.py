@@ -270,8 +270,19 @@ UI_SHIELD_MARKER_PEEP_Y: int = 2
 # Combat constants (rules contract; tunable per asm/PEEPS_REPORT.md)
 #============================================
 
+# ASM peep constants documented in asm/PEEPS_BEHAVIOR.md. These are
+# source-parity values, not automatically gameplay-scaled balancing knobs.
+ASM_PEEP_RECORD_STRIDE: int = 0x16
+ASM_PEEP_CAP: int = 0x00D0
+ASM_PEEP_MERGE_LIFE_CAP: int = 0x7D00
+ASM_MOVE_FAILED_CODE: int = 0x03E7
+ASM_VALID_MOVE_OPEN_CODE: int = 0
+ASM_VALID_MOVE_OUT_OF_BOUNDS_CODE: int = 1
+ASM_VALID_MOVE_ROCK_CODE: int = 2
+ASM_VALID_MOVE_EMPTY_CODE: int = 3
+
 PEEP_LIFE_REFERENCE: float = 50.0  # baseline life for damage-scaling math
-PEEP_LIFE_MAX: float = 200.0       # cap when joining forces (TODO: cite asm/PEEPS_REPORT.md section 4.4)
+PEEP_LIFE_MAX: float = 200.0       # gameplay-scaled cap when joining forces
 COMBAT_PEEP_DPS: float = 10.0      # damage per second peep-vs-peep at reference life
 COMBAT_HOUSE_DPS: float = 4.0      # damage per second peep-vs-house at reference life
 

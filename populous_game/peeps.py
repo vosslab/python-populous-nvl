@@ -108,6 +108,17 @@ class Peep:
         self.in_house = False
         self.weapon_type = 'hut' # Arme de depart : arme 0 (hut)
         self.state: str = peep_state.PeepState.IDLE
+        # ASM shadow fields from asm/PEEPS_BEHAVIOR.md. They are
+        # additive bookkeeping seams for future parity work and do not
+        # drive visible behavior until explicit consumers are wired.
+        self.asm_flags = 0
+        self.movement_substate = 0
+        self.town_counter = 0
+        self.linked_peep = None
+        self.remembered_target = None
+        self.terrain_marker = None
+        self.last_move_offset = 0
+        self.shield_opponent = None
 
     #============================================
     # State machine transitions (per asm/PEEPS_REPORT.md)

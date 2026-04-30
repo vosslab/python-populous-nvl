@@ -1,3 +1,63 @@
+## 2026-04-30
+
+### Additions and New Features
+- Patch 1: `populous_game/peeps.py` Peep gains additive ASM shadow
+  fields (`asm_flags`, `movement_substate`, `town_counter`,
+  `linked_peep`, `remembered_target`, `terrain_marker`,
+  `last_move_offset`, `shield_opponent`) initialized to safe defaults.
+- Patch 2: `populous_game/settings.py` separates ASM source-parity
+  constants (`ASM_PEEP_RECORD_STRIDE`, `ASM_PEEP_CAP`,
+  `ASM_PEEP_MERGE_LIFE_CAP`, `ASM_MOVE_FAILED_CODE`, and the
+  `ASM_VALID_MOVE_*` codes) from gameplay-scaled tuning.
+- Patch 3: `populous_game/pathfinding.py` adds `valid_move_code()`,
+  an additive ASM-shaped return-code helper that leaves
+  `_is_valid_move()` semantics unchanged.
+- Patch 4: `populous_game/terrain.py` allocates a 64x64 `map_who`
+  shadow occupancy table and exposes `reset_map_who()` and
+  `recompute_map_who(peeps)`.
+- Patch 5: `populous_game/game.py` routes peep creation through a
+  cap-aware allocator that enforces `ASM_PEEP_CAP`, awards `+10`
+  score per placed player peep on initial spawn, and rebuilds
+  `map_who` after spawn, house spawn/destroy, merge, and removal.
+- Patch 6: `populous_game/combat.py` `join_forces()` now copies the
+  stronger weapon tier onto the merge winner and clears transient
+  shadow fields on the winner; the loser also clears
+  `shield_opponent` before transitioning to dead.
+- Patch 7: `populous_game/combat.py` and `populous_game/game.py`
+  populate fight-state metadata: enemy contact transitions to
+  `FIGHT` when legal and assigns `shield_opponent` for the HUD
+  combat branch; stale opponents are cleared each tick and on
+  death.
+- Patch 8: `populous_game/mode_manager.py`,
+  `populous_game/input_controller.py`, and `populous_game/powers.py`
+  add a faction-indexed magnet table; papal UI placement and the
+  papal power both write through `set_faction_magnet()`, and
+  `clear_magnets()` resets the table on game reset.
+- Added
+  [docs/active_plans/ASM_PEEP_PARITY_SMALL_WINS.md](active_plans/ASM_PEEP_PARITY_SMALL_WINS.md),
+  a manager-grade implementation plan for the ASM peep parity small
+  wins tranche.
+
+### Developer Tests and Notes
+- Patch 9: focused tests cover the new contracts and seams across
+  `tests/test_peep_state_rules.py`,
+  `tests/test_pathfinding_legality.py`,
+  `tests/test_peep_spawn_finds_land.py`,
+  `tests/test_join_forces.py`, `tests/test_combat_rules.py`,
+  `tests/test_mode_manager.py`, `tests/test_powers_rules.py`, and
+  `tests/test_state_machine_integration.py`.
+- Integration gate (WP-IN-01) and lint gate (WP-IN-02) pass:
+  76 focused tests plus pyflakes, ASCII, and indentation checks
+  green; save round-trip remains schema-compatible with no bump.
+
+### Fixes and Maintenance
+- `populous_game/input_controller.py` adds a back-compat fallback in
+  the UI hit-test path so headless posted events that still use
+  raw 320x200 logical coordinates resolve to the same buttons as
+  scaled coordinates.
+- Updated [docs/TODO.md](TODO.md) to point at the active small-wins
+  parity plan.
+
 ## 2026-04-29
 
 ### Removals and Deprecations

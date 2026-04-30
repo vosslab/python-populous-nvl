@@ -103,10 +103,11 @@ class PowerManager:
 
 def _power_papal(game, target, spec) -> PowerResult:
 	"""Place the papal marker. target = (r, c)."""
+	import populous_game.faction as faction
 	if target is None:
 		return PowerResult(False, message='papal requires a target')
 	r, c = target
-	game.mode_manager.papal_position = (r, c)
+	game.mode_manager.set_faction_magnet(faction.Faction.PLAYER, r, c)
 	return PowerResult(True, mana_spent=spec.mana_cost,
 		cooldown=spec.cooldown, affected_cells=[(r, c)])
 

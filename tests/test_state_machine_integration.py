@@ -186,13 +186,14 @@ def test_reset_clears_knight_state_and_score():
 		game.spawn_initial_peeps(5)
 		result = game.power_manager.activate('knight', None)
 		assert result.success
-		assert game.score == 150
+		assert game.score == 200
 		assert any(getattr(p, 'weapon_type', None) == 'knight' for p in game.peeps)
 
 		game._reset_game()
 
 		assert game.score == 0
 		assert not any(getattr(p, 'weapon_type', None) == 'knight' for p in game.peeps)
+		assert game.mode_manager.papal_position is None
 		assert game.input_controller._find_knight_cursor == -1
 		assert game.input_controller._find_battle_cursor == -1
 	finally:

@@ -123,3 +123,47 @@ def test_house_destruction_respects_faction():
 	house_life = settings.PEEP_LIFE_MAX + 100.0
 	capped_life = min(house_life, settings.PEEP_LIFE_MAX)
 	assert capped_life == settings.PEEP_LIFE_MAX
+
+
+def test_asm_peep_constants_are_named_separately():
+	"""ASM source constants are available without changing gameplay caps."""
+	assert settings.ASM_PEEP_RECORD_STRIDE == 0x16
+	assert settings.ASM_PEEP_CAP == 0x00D0
+	assert settings.ASM_PEEP_MERGE_LIFE_CAP == 0x7D00
+	assert settings.ASM_MOVE_FAILED_CODE == 0x03E7
+	assert settings.PEEP_LIFE_MAX < settings.ASM_PEEP_MERGE_LIFE_CAP
+
+
+def test_mark_peep_vs_peep_fight_sets_shield_metadata():
+	"""Enemy contact records opponent references for shield combat bars."""
+	peep_a = MockPeep(faction_id=faction.Faction.PLAYER, life=50.0)
+	peep_b = MockPeep(faction_id=faction.Faction.ENEMY, life=50.0)
+	peep_a.state = peep_state.PeepState.IDLE
+	peep_b.state = peep_state.PeepState.IDLE
+	peep_a._ALLOWED_TRANSITIONS = {
+		peep_state.PeepState.IDLE: {peep_state.PeepState.FIGHT},
+	}
+	peep_b._ALLOWED_TRANSITIONS = {
+		peep_state.PeepState.IDLE: {peep_state.PeepState.FIGHT},
+	}
+
+	combat.mark_peep_vs_peep_fight(peep_a, peep_b)
+
+	assert peep_a.state == peep_state.PeepState.FIGHT
+	assert peep_b.state == peep_state.PeepState.FIGHT
+	assert peep_a.shield_opponent is peep_b
+	assert peep_b.shield_opponent is peep_a
+
+
+def test_damage_clears_dead_shield_opponent():
+	"""Fatal damage clears stale shield opponent references."""
+	attacker = MockPeep(faction_id=faction.Faction.PLAYER, life=500.0)
+	defender = MockPeep(faction_id=faction.Faction.ENEMY, life=1.0)
+	attacker.shield_opponent = defender
+	defender.shield_opponent = attacker
+
+	combat.damage_peep_vs_peep(attacker, defender, 1.0)
+
+	assert defender.state == peep_state.PeepState.DEAD
+	assert attacker.shield_opponent is None
+	assert defender.shield_opponent is None

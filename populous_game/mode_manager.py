@@ -2,6 +2,7 @@
 
 import time
 import populous_game.settings as settings
+import populous_game.faction as faction
 
 
 class ModeManager:
@@ -12,6 +13,10 @@ class ModeManager:
 		# Papal mode state
 		self.papal_mode = False
 		self.papal_position = (settings.GRID_HEIGHT // 2, settings.GRID_WIDTH // 2)
+		self.faction_magnets = {
+			faction.Faction.PLAYER: self.papal_position,
+			faction.Faction.ENEMY: None,
+		}
 
 		# Shield mode state
 		self.shield_mode = False
@@ -32,8 +37,25 @@ class ModeManager:
 
 	def set_papal_position(self, r: int, c: int) -> None:
 		"""Set papal position and turn off papal mode."""
-		self.papal_position = (max(r - 1, 0), max(c - 1, 0))
+		self.set_faction_magnet(
+			faction.Faction.PLAYER,
+			max(r - 1, 0),
+			max(c - 1, 0),
+		)
 		self.papal_mode = False
+
+	def set_faction_magnet(self, faction_id: int, r: int, c: int) -> None:
+		"""Set the ASM-style magnet table slot for a faction."""
+		coord = (max(int(r), 0), max(int(c), 0))
+		self.faction_magnets[int(faction_id)] = coord
+		if int(faction_id) == faction.Faction.PLAYER:
+			self.papal_position = coord
+
+	def clear_magnets(self) -> None:
+		"""Clear all faction magnet positions."""
+		for faction_id in list(self.faction_magnets):
+			self.faction_magnets[faction_id] = None
+		self.papal_position = None
 
 	def toggle_shield(self) -> None:
 		"""Toggle shield mode on/off."""

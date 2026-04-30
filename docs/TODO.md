@@ -7,6 +7,8 @@
 - Next implementation item: add an explicit peep record layer with the
   ASM fields needed for `_move_peeps`, `_move_explorer`, and
   `_set_town`.
+- Active plan for the current ASM-parity small wins:
+  [docs/active_plans/ASM_PEEP_PARITY_SMALL_WINS.md](active_plans/ASM_PEEP_PARITY_SMALL_WINS.md).
 - Add sound to actions/powers/combat
 - Create enemies
 - Add a home page and game mode/password selection

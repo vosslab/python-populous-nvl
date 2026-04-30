@@ -4,6 +4,7 @@ import pytest
 import populous_game.peep_state as peep_state
 import populous_game.faction as faction
 import populous_game.combat as combat
+import populous_game.peeps as peeps
 
 
 class MockGameMap:
@@ -62,6 +63,19 @@ def test_peep_starts_in_idle():
 	"""Per asm/PEEPS_REPORT.md: newly constructed peep starts in IDLE state."""
 	p = MockPeep()
 	assert p.state == peep_state.PeepState.IDLE
+
+
+def test_real_peep_asm_shadow_fields_default():
+	"""New peeps expose additive ASM shadow bookkeeping fields."""
+	p = peeps.Peep(1, 2, MockGameMap())
+	assert p.asm_flags == 0
+	assert p.movement_substate == 0
+	assert p.town_counter == 0
+	assert p.linked_peep is None
+	assert p.remembered_target is None
+	assert p.terrain_marker is None
+	assert p.last_move_offset == 0
+	assert p.shield_opponent is None
 
 
 def test_allowed_transitions_from_idle():

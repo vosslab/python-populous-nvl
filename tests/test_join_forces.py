@@ -9,10 +9,17 @@ import populous_game.settings as settings
 class MockPeep:
 	"""Mock Peep for join_forces testing."""
 
-	def __init__(self, faction_id: int = faction.Faction.PLAYER, life: float = 50.0):
+	def __init__(self, faction_id: int = faction.Faction.PLAYER, life: float = 50.0,
+			weapon_type: str = 'hut'):
 		self.faction_id = faction_id
 		self.life = life
 		self.state = peep_state.PeepState.IDLE
+		self.weapon_type = weapon_type
+		self.remembered_target = None
+		self.terrain_marker = None
+		self.last_move_offset = 0
+		self.town_counter = 0
+		self.shield_opponent = None
 
 	def transition(self, new_state: str) -> None:
 		"""Mock transition."""
@@ -122,3 +129,38 @@ def test_equal_life_merge_prefers_first_argument():
 	assert result is True
 	assert peep_a.life == min(100.0, settings.PEEP_LIFE_MAX)
 	assert peep_b.state == peep_state.PeepState.DEAD
+
+
+def test_merge_copies_stronger_weapon_to_winner():
+	"""The surviving peep inherits the stronger weapon tier."""
+	peep_a = MockPeep(faction_id=faction.Faction.PLAYER, life=70.0, weapon_type='hut')
+	peep_b = MockPeep(
+		faction_id=faction.Faction.PLAYER,
+		life=20.0,
+		weapon_type='castle_large',
+	)
+
+	result = combat.join_forces(peep_a, peep_b)
+
+	assert result is True
+	assert peep_a.weapon_type == 'castle_large'
+
+
+def test_merge_clears_winner_transient_fields():
+	"""Successful merge clears transient movement/combat bookkeeping."""
+	peep_a = MockPeep(faction_id=faction.Faction.PLAYER, life=70.0)
+	peep_b = MockPeep(faction_id=faction.Faction.PLAYER, life=20.0)
+	peep_a.remembered_target = (4, 5)
+	peep_a.terrain_marker = 12
+	peep_a.last_move_offset = 9
+	peep_a.town_counter = 3
+	peep_a.shield_opponent = peep_b
+
+	result = combat.join_forces(peep_a, peep_b)
+
+	assert result is True
+	assert peep_a.remembered_target is None
+	assert peep_a.terrain_marker is None
+	assert peep_a.last_move_offset == 0
+	assert peep_a.town_counter == 0
+	assert peep_a.shield_opponent is None

@@ -172,9 +172,35 @@ class GameMap:
         ]
         self.houses = []
         self.tile_surfaces = load_tile_surfaces()
+        self.map_who = self._new_map_who_table()
         self.water_timer = 0.0
         self.water_frame = 0
         self.flag_frame = 0
+
+    def _new_map_who_table(self):
+        """Return a zero-filled ASM-style occupancy table."""
+        return [
+            [0 for _ in range(self.grid_width)]
+            for _ in range(self.grid_height)
+        ]
+
+    def reset_map_who(self):
+        """Clear shadow peep occupancy bookkeeping."""
+        self.map_who = self._new_map_who_table()
+
+    def recompute_map_who(self, peeps):
+        """Rebuild shadow occupancy from the live peep list."""
+        self.reset_map_who()
+        for index, peep_obj in enumerate(peeps):
+            if getattr(peep_obj, 'dead', False):
+                continue
+            if getattr(peep_obj, 'state', None) == 'dead':
+                continue
+            r = int(peep_obj.y)
+            c = int(peep_obj.x)
+            if 0 <= r < self.grid_height and 0 <= c < self.grid_width:
+                if self.map_who[r][c] == 0:
+                    self.map_who[r][c] = index + 1
 
     def get_corner_altitude(self, r, c):
         if 0 <= r <= self.grid_height and 0 <= c <= self.grid_width:
@@ -976,4 +1002,3 @@ class GameMap:
 
     def add_house(self, house):
         self.houses.append(house)
-

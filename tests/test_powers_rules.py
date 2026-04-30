@@ -280,6 +280,7 @@ def test_papal_sets_marker_position(game):
 
 	assert result.success
 	assert game.mode_manager.papal_position == (3, 3)
+	assert game.mode_manager.faction_magnets[faction.Faction.PLAYER] == (3, 3)
 
 
 def test_power_cooldown_decrements(game):

@@ -8,6 +8,8 @@ import random
 import pytest
 import populous_game.game as game_module
 import populous_game.faction as faction
+import populous_game.peep_state as peep_state
+import populous_game.settings as settings
 
 
 FIXED_SEEDS = (1, 2, 3, 4, 5, 1234, 0xdeadbeef)
@@ -31,6 +33,43 @@ def test_spawn_initial_peeps_count_matches_on_fixed_seeds():
 			f"map_seed {seed}: expected 10 peeps, got {len(game.peeps)}"
 		)
 		assert all(p.faction_id == faction.Faction.PLAYER for p in game.peeps)
+
+
+def test_spawn_initial_peeps_awards_player_score():
+	"""Initial player placement awards the ASM-cited score side effect."""
+	random.seed(77)
+	game = _seeded_game(1234)
+	game.score = 0
+	game.spawn_initial_peeps(3)
+	assert len(game.peeps) == 3
+	assert game.score == 30
+
+
+def test_spawn_initial_peeps_honors_asm_cap(monkeypatch):
+	"""Spawn allocation refuses peeps once the ASM cap is reached."""
+	monkeypatch.setattr(settings, 'ASM_PEEP_CAP', 2)
+	random.seed(88)
+	game = _seeded_game(1234)
+	game.score = 0
+	game.spawn_initial_peeps(5)
+	assert len(game.peeps) == 2
+	assert game.score == 20
+
+
+def test_spawn_recomputes_map_who_for_live_peeps():
+	"""Spawning writes index+1 values into shadow occupancy."""
+	random.seed(89)
+	game = _seeded_game(1234)
+	game.spawn_initial_peeps(1)
+	peep_obj = game.peeps[0]
+	r = int(peep_obj.y)
+	c = int(peep_obj.x)
+	assert game.game_map.map_who[r][c] == 1
+
+	peep_obj.dead = True
+	peep_obj.state = peep_state.PeepState.DEAD
+	game._recompute_map_who()
+	assert game.game_map.map_who[r][c] == 0
 
 
 def test_spawn_enemy_peeps_count_matches_on_fixed_seeds():
