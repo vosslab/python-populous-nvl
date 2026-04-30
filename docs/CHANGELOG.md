@@ -1,6 +1,44 @@
 ## 2026-04-30
 
 ### Additions and New Features
+- Round 2 Patch 10a: `populous_game/atlas_metadata.py` lands the
+  named atlas-layout layer (`AtlasLayout`, `frame_rect()`, sheet
+  descriptors for `AmigaSprites1.PNG`, `AmigaTiles*.PNG`,
+  `Weapons.png`, `ButtonUI.png`). Existing slicing in `peeps.py`,
+  `terrain.py`, and `assets.py` is unchanged this round; a follow-up
+  patch migrates the call sites to consume the metadata layer.
+  Pinned by `tests/test_atlas_metadata.py`.
+- Round 2 Patch 7: `populous_game/pathfinding.py` adds
+  `where_do_i_go_code(peep, game_map, rng)`, a deterministic
+  terrain-only shadow movement-scoring helper. Returns one of the 8
+  ring offsets or `ASM_MOVE_FAILED_CODE`. Documented as a Python
+  compatibility helper, not full ASM `_where_do_i_go` parity; does
+  not call `check_life_result()` and has no production consumer.
+  Pinned by `tests/test_where_do_i_go_code.py`.
+- Round 2 Patch 6: `populous_game/peep_helpers.py` adds
+  `cleanup_dead_peep(peep_obj)` which clears `linked_peep`,
+  `remembered_target`, `terrain_marker`, `last_move_offset`, and
+  `shield_opponent` on death. `Peep.transition(DEAD)` and the
+  `try_build_house` direct-state-set path both call the helper so
+  the shadow bookkeeping is consistent across both death paths.
+  Pinned by `tests/test_cleanup_dead_peep.py`.
+- Round 2 Patch 5: `populous_game/peep_helpers.py` adds
+  `advance_set_frame(counter, step)` returning a
+  `SetFrameResult(counter, success)` and the documented thresholds
+  `ASM_SET_FRAME_THRESHOLDS = (0x2A, 0x55, 0x5D, 0x60, 0x65, 0x66)`.
+  No production consumer yet. Pinned by
+  `tests/test_advance_set_frame.py`.
+- Round 2 Patch 4: `populous_game/peep_helpers.py` (new module)
+  adds `check_life_result(game_map, r, c)` returning a
+  `CheckLifeResult(score, all_of_city, a_flat_block, scanned)` for
+  the 3x3 ring around (r, c). Pure; documented as a Python
+  compatibility helper, not source-pinned ASM `_check_life` parity.
+  Pinned by `tests/test_check_life_result.py`.
+- Round 2 Patch 3: `populous_game/pathfinding.py` adds
+  `map_blk_code(game_map, r, c)` and `map_bk2_code(game_map, r, c)`
+  helpers that read the GameMap shadow tile-class arrays and return
+  `ASM_TILE_OUT_OF_BOUNDS` for off-map probes. Pinned by
+  `tests/test_map_blk_code.py`.
 - Round 2 Patch 2: `populous_game/terrain.py` adds the ASM tile-class
   shadow layer to `GameMap`. New `shadow_blk` and `shadow_bk2`
   arrays (`grid_height x grid_width`) classify each tile as one of
@@ -31,6 +69,17 @@
   knight portrait for peeps with `weapon_type == 'knight'` (and
   `not in_house`) at the bottom-left `blason_bl` slot, falling back
   to the existing `PEEP_WALK_FRAMES` path if the asset is missing.
+
+### Decisions and Failures
+- Round 2 Patches 8 and 9 (build-cursor gate, single-level click,
+  ground cursor overlay) deferred to a parallel coder branch per the
+  plan's coordination note. No new M5 work started until that branch
+  is reviewed.
+- Round 2 Patches 11 / 12 / 13 (knight world atlas audit, atlas-
+  driven renderer, retire loose `knight_peep.*`) blocked on the
+  visual atlas audit for `data/gfx/AmigaSprites1.PNG`. Atlas
+  metadata scaffolding (Patch 10a) lands first so the named-frame
+  layer is ready when the audit pins the rows/columns.
 
 ### Behavior or Interface Changes
 - Renamed `data/gfx/knight.png` to `data/gfx/knight_peep.png` and

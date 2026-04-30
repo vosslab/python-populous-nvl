@@ -35,6 +35,65 @@ def map_blk_code(game_map, r: int, c: int) -> int:
 	return settings.ASM_TILE_OUT_OF_BOUNDS
 
 
+def where_do_i_go_code(peep_obj, game_map, rng) -> int:
+	"""Pick a local movement offset from the ASM 8-direction ring.
+
+	Terrain-only shadow helper, NOT full ASM `_where_do_i_go` parity.
+	Round 2 of the parity tranche keeps this helper pure and
+	terrain-only; it does not call `check_life_result()` and does not
+	consult peep state beyond `(x, y)`. Production movement (A* and
+	wandering) does not consume the result yet.
+
+	Returns either an `(dr, dc)` offset tuple drawn from the ASM
+	direction ring (matching `ASM_TO_OFFSET` ordering) or
+	`ASM_MOVE_FAILED_CODE` when no walkable in-bounds neighbor is
+	available. The selection is deterministic for a seeded `rng`.
+	"""
+	# Direction ordering mirrors ASM_TO_OFFSET indices 0..7. Each
+	# entry is the (dr, dc) tile delta on the Python grid.
+	directions = (
+		(-1, 0),   # 0: north
+		(-1, 1),   # 1: northeast
+		(0, 1),    # 2: east
+		(1, 1),    # 3: southeast
+		(1, 0),    # 4: south
+		(1, -1),   # 5: southwest
+		(0, -1),   # 6: west
+		(-1, -1),  # 7: northwest
+	)
+	pr = int(peep_obj.y)
+	pc = int(peep_obj.x)
+	# Score each candidate offset using the shadow tile-class layer.
+	# Higher score = more attractive for movement.
+	candidates = []
+	for offset in directions:
+		dr, dc = offset
+		nr = pr + dr
+		nc = pc + dc
+		code = map_blk_code(game_map, nr, nc)
+		if code == settings.ASM_TILE_OUT_OF_BOUNDS:
+			continue
+		if code == settings.ASM_TILE_WATER:
+			continue
+		if code == settings.ASM_TILE_ROCK:
+			continue
+		# Flat tiles preferred, then slopes, then towns.
+		score = 0
+		if code == settings.ASM_TILE_FLAT:
+			score = 3
+		elif code == settings.ASM_TILE_SLOPE:
+			score = 2
+		elif code == settings.ASM_TILE_TOWN:
+			score = 1
+		candidates.append((score, offset))
+	if not candidates:
+		return settings.ASM_MOVE_FAILED_CODE
+	# Pick the highest-scoring candidate; ties broken by the seeded RNG.
+	max_score = max(score for score, _ in candidates)
+	top = [offset for score, offset in candidates if score == max_score]
+	return rng.choice(top)
+
+
 def map_bk2_code(game_map, r: int, c: int) -> int:
 	"""Return the ASM map_bk2 secondary tile-class code at tile
 	(r, c). See map_blk_code() for semantics; the bk2 layer carries

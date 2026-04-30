@@ -147,6 +147,11 @@ class Peep:
         # DEAD is universally reachable from any non-DEAD state.
         if new_state == peep_state.PeepState.DEAD:
             self.state = new_state
+            # Clear ASM shadow bookkeeping (linked peep, remembered
+            # target, terrain marker, shield opponent, last move
+            # offset) so later code cannot see stale references.
+            import populous_game.peep_helpers as peep_helpers
+            peep_helpers.cleanup_dead_peep(self)
             return
         if self.state == peep_state.PeepState.DEAD:
             raise ValueError(f"Disallowed transition from DEAD to {new_state}")
@@ -304,6 +309,10 @@ class Peep:
             self.dead = True
             # Peep becomes a house, so set state directly without transition validation
             self.state = peep_state.PeepState.DEAD
+            # Mirror the cleanup that transition() runs for normal
+            # death so shadow bookkeeping is consistent for both paths.
+            import populous_game.peep_helpers as peep_helpers
+            peep_helpers.cleanup_dead_peep(self)
 
             if excess_life > 0:
                 # Cherche une case adjacente libre pour le peep excedentaire
