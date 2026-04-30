@@ -2,6 +2,16 @@
 
 ## Pending
 
+- Remove the deprecated `settings.TILES_PATH` and
+  `settings.SPRITES_PATH` aliases once
+  [tools/tile_diagnostic.py](../tools/tile_diagnostic.py) and any
+  remaining non-runtime caller migrate to
+  [populous_game/sheet_registry.py](../populous_game/sheet_registry.py)
+  `resolve_role()`. The aliases live in
+  [populous_game/settings.py](../populous_game/settings.py) and the
+  runtime guard
+  [tests/test_no_legacy_asset_paths.py](../tests/test_no_legacy_asset_paths.py)
+  blocks regressions in `populous_game/`.
 - Read [asm/PEEPS_GAP_REPORT.md](../asm/PEEPS_GAP_REPORT.md) for the
   full Python parity gap report against `asm/PEEPS_BEHAVIOR.md`.
 - Next implementation item: add an explicit peep record layer with the

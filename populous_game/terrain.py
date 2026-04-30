@@ -1,8 +1,9 @@
-import pygame
 import random
 import collections
 import numpy
 import populous_game.settings as settings
+import populous_game.sheet_loader as sheet_loader
+import populous_game.sheet_masks as sheet_masks
 
 
 # NumPy is used as an internal implementation detail of the island
@@ -102,63 +103,55 @@ WATER_TILE_KEYS: tuple = (settings.TILE_WATER, settings.TILE_WATER_2)
 
 
 def load_tile_surfaces():
-    """Charge le tileset et découpe chaque tile en surface pygame.
+    """Charge le tileset et decoupe chaque tile en surface pygame.
 
-    Tiles are scaled by `settings.TERRAIN_SCALE` at load time so the
-    blit pass downstream does not need to know which preset is active
-    -- the cached surface in `tiles[(row, col)]` is already the right
-    canvas-pixel size. At TERRAIN_SCALE=1 (classic) this is a no-op
-    and the original 32x24 sprite is stored unchanged.
+    Routes through `sheet_loader.extract_frame` so the loader prefers
+    the Upscayl 4x sheet when present and falls back to the original
+    AmigaTiles1.PNG when not. Atlas geometry stays in original logical
+    coordinates; the extractor multiplies each crop rect by the
+    resolved `source_scale` before subsurface, then resizes the
+    cropped frame to `(32 * TERRAIN_SCALE, 24 * TERRAIN_SCALE)`.
+    Smoothscale is used for the 4x source so the downscale stays
+    clean; nearest is used at 1x to preserve the chunky pixel-art
+    look of the original Amiga sheet.
     """
-    sheet_raw = pygame.image.load(settings.TILES_PATH).convert()
-    sheet_raw.set_colorkey((0, 49, 0))  # Transparence pour le fond vert des tiles Amiga
-    sheet = sheet_raw.convert_alpha()
-
-    # Découpage du nouveau format AmigaTiles (32x24 pixels, décalage x=12 y=10)
+    # Logical atlas geometry matches the original AmigaTiles1.PNG
+    # layout: 32x24 cells with origin (12, 10) and stride (35, 27).
     tile_w = 32
     tile_h = 24
-
     x_starts = [12 + i * 35 for i in range(9)]
-    x_ends = [x + tile_w for x in x_starts]
-
     y_starts = [10 + i * 27 for i in range(8)]
-    y_ends = [y + tile_h for y in y_starts]
 
-    ref_w = tile_w
-    ref_h = tile_h
-
-    # Snapshot the active terrain scale once. Nearest-neighbor scale
-    # at scale > 1 preserves the chunky-pixel look of the Amiga art.
-    scale = settings.TERRAIN_SCALE
+    # Pick the scale_filter based on the resolved sheet's source scale:
+    # smoothscale when downscaling from a 4x Upscayl sheet, nearest
+    # when a 1x original sheet is in play (chunky pixels mode).
+    _, source_scale = sheet_loader.load_sheet(
+        "tiles_1", color_key=(0, 49, 0),
+    )
+    scale_filter = 'smooth' if source_scale > 1 else 'nearest'
+    target_w = tile_w * settings.TERRAIN_SCALE
+    target_h = tile_h * settings.TERRAIN_SCALE
 
     tiles = {}
-    for row in range(len(y_starts)):
-        for col in range(len(x_starts)):
-            # Gérer le cas de la dernière ligne restreinte sur les AmigaTiles (seulement 5 tiles)
+    for row, y0 in enumerate(y_starts):
+        for col, x0 in enumerate(x_starts):
+            # AmigaTiles1's last row only contains 5 valid tile cells.
             if row == 7 and col > 4:
                 continue
-
-            x0, x1 = x_starts[col], x_ends[col]
-            y0, y1 = y_starts[row], y_ends[row]
-            tw, th = x1 - x0, y1 - y0
-            try:
-                sub = sheet.subsurface(pygame.Rect(x0, y0, tw, th)).copy()
-            except ValueError:
-                continue
-
-            if tw < ref_w or th < ref_h:
-                padded = pygame.Surface((ref_w, ref_h), pygame.SRCALPHA)
-                padded.blit(sub, (0, 0))
-                sub = padded
-
-            # Scale by TERRAIN_SCALE so the cached surface lives in the
-            # active canvas pixel space. Skip when scale == 1 to avoid
-            # an unnecessary copy.
-            if scale != 1:
-                scaled_w = sub.get_width() * scale
-                scaled_h = sub.get_height() * scale
-                sub = pygame.transform.scale(sub, (scaled_w, scaled_h))
-            tiles[(row, col)] = sub
+            tiles[(row, col)] = sheet_loader.extract_frame(
+                "tiles_1",
+                (x0, y0, tile_w, tile_h),
+                (target_w, target_h),
+                scale_filter=scale_filter,
+                color_key=(0, 49, 0),
+                # The exact-match colorkey above handles the original
+                # PNG cleanly. The 4x Upscayl sheet has interpolated
+                # near-green background pixels that the colorkey misses
+                # (visible as green halos around iso tiles); the post
+                # mask drops that band to alpha 0 in source-scaled
+                # space, before smoothscale.
+                post_mask=sheet_masks.amiga_green_background_to_alpha,
+            )
     return tiles
 
 

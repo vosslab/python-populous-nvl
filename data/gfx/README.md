@@ -31,12 +31,12 @@ or visual notes to this folder. Put temporary visual diagnostics under
 
 | File | Role | Runtime status |
 | --- | --- | --- |
-| `AmigaSprites1.PNG` | Main entity/effect sprite atlas | Active |
-| `Sprites.PNG` | Older alternate sprite sheet | Reference / audit |
-| `AmigaTiles1.PNG` | Active terrain tile bank | Active |
-| `AmigaTiles2.PNG` | Alternate terrain tile bank | Reference / future |
-| `AmigaTiles3.PNG` | Alternate terrain tile bank | Reference / future |
-| `AmigaTiles4.PNG` | Alternate terrain tile bank | Reference / future |
+| `AmigaSprites1.png` (+ `_upscayl_4x_*`) | Main entity/effect sprite atlas | Active (4x preferred) |
+| `Sprites.png` (+ `_upscayl_4x_*`) | Older alternate sprite sheet | Reference / audit |
+| `AmigaTiles1.png` (+ `_upscayl_4x_*`) | Active terrain tile bank | Active (4x preferred) |
+| `AmigaTiles2.png` (+ `_upscayl_4x_*`) | Alternate terrain tile bank | Registered / future |
+| `AmigaTiles3.png` (+ `_upscayl_4x_*`) | Alternate terrain tile bank | Registered / future |
+| `AmigaTiles4.png` (+ `_upscayl_4x_*`) | Alternate terrain tile bank | Registered / future |
 | `AmigaUI.png` | Main 320 x 200 HUD chrome | Active |
 | `AmigaUI_click.png` | Pressed-button HUD reference | Reference / future |
 | `AmigaUI_backup.png` | Backup/comparison HUD copy | Reference |
@@ -81,10 +81,13 @@ slopes, rocks, buildings, vegetation, ruins, bridges, and other world
 tiles.
 
 Use these sheets for terrain rendering and future ASM tile/block
-parity work. `AmigaTiles1.PNG` is the active runtime bank through
-`settings.TILES_PATH`; the other banks should stay available for
-theme or level-bank work. Do not crop individual terrain tiles into
-separate runtime files.
+parity work. `AmigaTiles1.png` is the active runtime bank, resolved
+through
+[populous_game/sheet_registry.py](../../populous_game/sheet_registry.py)
+under role `tiles_1`; the other banks (`tiles_2`..`tiles_4`) are
+registered with the same preferred-with-fallback contract so future
+runtime callers do not need to introduce ad hoc filename strings. Do
+not crop individual terrain tiles into separate runtime files.
 
 ### UI graphics
 
@@ -104,11 +107,14 @@ separate runtime files.
 
 - `AmigaUI_upscayl_4x_high-fidelity-4x.png`
 - `AmigaUI_click_upscayl_4x_high-fidelity-4x.png`
-  - 4x upscaled versions of the active and click-state UI sheets
-    intended for the larger HUD presets. Same atlas layout, four
-    times the pixel dimensions. Renderer/asset code can pick the
-    upscaled sheet based on the active scale instead of running an
-    interactive upscale at load time.
+  - 4x upscaled versions of the active and click-state UI sheets.
+    Same atlas layout, four times the pixel dimensions. These are the
+    preferred runtime source art -- the loader in
+    [populous_game/sheet_loader.py](../../populous_game/sheet_loader.py)
+    picks them when present and silently falls back to the original
+    PNG when missing. The HUD iso-hole punch runs on the source-scaled
+    surface (4x for Upscayl, 1x for original) before the cached HUD is
+    smoothscaled to internal canvas size.
 
 - `ButtonUI.png`
   - Button UI atlas. 5 rows x 5 cols, 34 x 17 px cells. Action-name
@@ -131,6 +137,8 @@ Runtime consumers should load these assets through stable modules:
 
 | Asset family | Primary consumer |
 | --- | --- |
+| Sheet role -> file mapping | [populous_game/sheet_registry.py](../../populous_game/sheet_registry.py) |
+| Sheet load + frame extraction | [populous_game/sheet_loader.py](../../populous_game/sheet_loader.py) |
 | Terrain tiles | [populous_game/terrain.py](../../populous_game/terrain.py) |
 | Peep/world sprites | [populous_game/peeps.py](../../populous_game/peeps.py) |
 | HUD, buttons, weapons | [populous_game/assets.py](../../populous_game/assets.py) |

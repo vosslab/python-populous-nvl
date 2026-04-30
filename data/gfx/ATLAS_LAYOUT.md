@@ -50,17 +50,39 @@ Amiga terrain and sprite sheets.
 
 ## Runtime scaling
 
-All atlas geometry below is in source-pixel space.
+All atlas geometry below is in original logical pixel space (the
+original Amiga atlas dimensions). It does NOT change when the runtime
+loader resolves a 4x Upscayl sheet.
 
-Runtime code may scale extracted surfaces after slicing:
+Runtime extraction is centralized in
+[populous_game/sheet_loader.py](../../populous_game/sheet_loader.py)
+through `extract_frame(role, logical_rect, runtime_size, ...)`. The
+extractor:
 
-- Terrain tiles scale by `settings.TERRAIN_SCALE`.
-- Peep sprites scale by `settings.TERRAIN_SCALE`.
-- The HUD scales by `settings.HUD_SCALE`.
-- Weapon and button atlas cells currently load at native size.
+- Resolves the role through
+  [populous_game/sheet_registry.py](../../populous_game/sheet_registry.py),
+  preferring the 4x Upscayl sheet when present and falling back to
+  the original PNG when not. Each candidate declares its own
+  `source_scale` (4 or 1).
+- Multiplies the logical crop rectangle by `source_scale` before
+  `subsurface()`, so the same logical rect works for both 1x and 4x
+  sheets.
+- Resizes the cropped frame to `runtime_size` with smoothscale (when
+  downscaling from a 4x sheet) or nearest-neighbor (when scaling up
+  from a 1x sheet, preserving the chunky Amiga pixel-art look).
+- Caches by `(role, logical_rect, runtime_size, scale_filter)`.
+
+Cached runtime sizes:
+
+- Terrain tiles: `(32 * settings.TERRAIN_SCALE, 24 * settings.TERRAIN_SCALE)`.
+- Peep sprites: `(SPRITE_SIZE * settings.TERRAIN_SCALE, ...)`.
+- HUD chrome: `(settings.INTERNAL_WIDTH, settings.INTERNAL_HEIGHT)`.
+- Weapon icons: `(16 * settings.HUD_SCALE, 16 * settings.HUD_SCALE)`.
+- Button cells: `(34 * settings.HUD_SCALE, 17 * settings.HUD_SCALE)`.
 
 Do not store scaled sizes in atlas metadata. Store only source
-rectangles and let the runtime consumer decide how to scale.
+rectangles in original logical pixel coordinates and let the runtime
+consumer pass the runtime target size to `extract_frame`.
 
 ## AmigaSprites1.PNG
 
@@ -185,8 +207,10 @@ row is partial: row 7 has only columns 0 through 4.
 
 ### Current terrain mapping
 
-The active runtime uses `AmigaTiles1.PNG` through
-`settings.TILES_PATH`. The semantic mapping is currently stored in
+The active runtime uses `AmigaTiles1.png` resolved through
+[populous_game/sheet_registry.py](../../populous_game/sheet_registry.py)
+under role `tiles_1` (4x Upscayl preferred, original PNG fallback).
+The semantic key -> atlas-coordinate mapping is stored in
 [populous_game/settings.py](../../populous_game/settings.py).
 
 | Python key | Atlas coordinate | Status |

@@ -5,49 +5,51 @@ import populous_game.settings as settings
 import populous_game.faction as faction
 import populous_game.peep_state as peep_state
 import populous_game.peep_helpers as peep_helpers
+import populous_game.sheet_loader as sheet_loader
+import populous_game.sheet_masks as sheet_masks
 
 # Sprite size in the source sprite sheet
 SPRITE_EXTRACT_SIZE = 16
 
 
 def load_sprite_surfaces():
-    """Charge le sprite sheet et decoupe les sprites 16x16 selon un format fixe (AmigaSprites)."""
-    sheet_raw = pygame.image.load(settings.SPRITES_PATH).convert()
+    """Charge le sprite sheet et decoupe les sprites 16x16 selon un format fixe (AmigaSprites).
 
-    # Fond vert transparent Amiga
-    sheet_raw.set_colorkey((0, 49, 0))
-    sheet = sheet_raw.convert_alpha()
-
+    Routes through `sheet_loader.extract_frame` so the loader prefers
+    the Upscayl 4x sheet when present and falls back to the original
+    AmigaSprites1.PNG when not. The residual-black -> alpha mask runs
+    in source-scaled space (before smoothscale) so silhouettes stay
+    clean through the downscale.
+    """
     start_x, start_y = 11, 10
     stride_x, stride_y = 20, 20
-
     x_starts = [start_x + i * stride_x for i in range(16)]
     y_starts = [start_y + j * stride_y for j in range(9)]
+
+    # Pick the scale_filter based on the resolved sheet's source scale.
+    _, source_scale = sheet_loader.load_sheet(
+        "sprites_amiga", color_key=(0, 49, 0),
+    )
+    scale_filter = 'smooth' if source_scale > 1 else 'nearest'
+    # Cached peep size matches TERRAIN_SCALE at every preset.
+    target_size = settings.SPRITE_SIZE * settings.TERRAIN_SCALE
 
     sprites = {}
     for r, y0 in enumerate(y_starts):
         for c, x0 in enumerate(x_starts):
-            try:
-                sub = sheet.subsurface(pygame.Rect(x0, y0, SPRITE_EXTRACT_SIZE, SPRITE_EXTRACT_SIZE)).copy()
-            except ValueError:
-                continue
-
-            # Supprimer le fond noir residuel -> transparent
-            arr = pygame.surfarray.pixels3d(sub)
-            alpha = pygame.surfarray.pixels_alpha(sub)
-            mask = ((arr[:, :, 0] == 0) & (arr[:, :, 1] == 0) & (arr[:, :, 2] == 0))
-            alpha[mask] = 0
-            del arr, alpha  # liberer les locks surfarray
-
-            # Scale peep sprites by TERRAIN_SCALE so they match the
-            # iso tile size at every preset (chunky-pixels mode). At
-            # classic (TERRAIN_SCALE=1) this is the legacy 16x16; at
-            # remaster the peeps render at 32x32, at large 64x64.
-            target_size = settings.SPRITE_SIZE * settings.TERRAIN_SCALE
-            sub = pygame.transform.scale(sub, (target_size, target_size))
-
-            sprites[(r, c)] = sub
-
+            sprites[(r, c)] = sheet_loader.extract_frame(
+                "sprites_amiga",
+                (x0, y0, SPRITE_EXTRACT_SIZE, SPRITE_EXTRACT_SIZE),
+                (target_size, target_size),
+                scale_filter=scale_filter,
+                color_key=(0, 49, 0),
+                # Drops both the near-green background band introduced
+                # by the 4x Upscayl pipeline AND the legacy
+                # residual-black letterbox in source-scaled space.
+                # At source_scale == 1 both passes are no-ops because
+                # the exact colorkey already keyed those pixels.
+                post_mask=sheet_masks.amiga_green_and_black_to_alpha,
+            )
     return sprites
 
 

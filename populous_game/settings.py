@@ -154,8 +154,30 @@ MP3_DIR: str = os.path.join(REPO_ROOT, "data", "mp3")
 # Game.__init__ via AudioManager.play_music(). Per docs/PYTHON_STYLE.md,
 # this is a real settings constant rather than an environment variable.
 MUSIC_AUTOSTART: bool = False
-TILES_PATH: str = os.path.join(GFX_DIR, "AmigaTiles1.PNG")
-SPRITES_PATH: str = os.path.join(GFX_DIR, "AmigaSprites1.PNG")
+# Deprecated. Runtime modules under populous_game/ must use
+# populous_game.sheet_registry.resolve_role() instead. These aliases
+# remain so non-runtime tooling (for example, tools/tile_diagnostic.py)
+# can read the original PNG path; removal is tracked in docs/TODO.md.
+# The values are resolved lazily through ASSET_SHEETS so the filenames
+# live in exactly one place. tests/test_no_legacy_asset_paths.py
+# enforces that no runtime module reads these constants directly.
+_LEGACY_ROLE_FOR_NAME: dict = {
+    "TILES_PATH": "tiles_1",
+    "SPRITES_PATH": "sprites_amiga",
+}
+
+
+def __getattr__(name: str):
+    # Module-level __getattr__ defers resolution until first access,
+    # which avoids the import-time cycle with sheet_registry. By the
+    # time any caller reads `settings.TILES_PATH`, both modules are
+    # fully imported.
+    if name in _LEGACY_ROLE_FOR_NAME:
+        import populous_game.sheet_registry as _sheet_registry
+        role = _LEGACY_ROLE_FOR_NAME[name]
+        candidates = _sheet_registry.ASSET_SHEETS[role]["candidates"]
+        return os.path.join(GFX_DIR, candidates[-1]["filename"])
+    raise AttributeError(name)
 
 # === Tiles spritesheet grid (lignes rouges dans Tiles.PNG) ===
 TILES_V_LINES: list = [(65,66),(132,133),(199,200),(266,267),(333,334),(400,401),(467,468),(534,535),(601,602)]

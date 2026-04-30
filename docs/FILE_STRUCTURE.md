@@ -79,15 +79,14 @@ read-only references, not runtime code.
 ```text
 data/
 +- gfx/                   PNG and GIF spritesheets
-|  +- AmigaTiles1.PNG     primary terrain tileset
-|  +- AmigaTiles2..4.PNG  additional terrain tilesets
-|  +- AmigaSprites1.PNG   peep spritesheet
-|  +- Sprites.PNG         alternate sprite sheet
-|  +- AmigaUI.png         interface background (320x200 logical)
-|  +- AmigaUI_click.png   pressed-button overlay
-|  +- ButtonUI.png        UI button assets
-|  +- Weapons.png         weapon icons
-|  `- Knight.gif/png      knight sprite
+|  +- AmigaTiles1.png (+ _upscayl_4x_*) primary terrain tileset (4x preferred at runtime)
+|  +- AmigaTiles2..4.png (+ _upscayl_4x_*) additional terrain tilesets
+|  +- AmigaSprites1.png (+ _upscayl_4x_*) peep spritesheet (4x preferred at runtime)
+|  +- Sprites.png (+ _upscayl_4x_*)       alternate sprite sheet
+|  +- AmigaUI.png (+ _upscayl_4x_*)       HUD chrome (4x preferred at runtime)
+|  +- AmigaUI_click.png (+ _upscayl_4x_*) pressed-button overlay
+|  +- ButtonUI.png (+ _upscayl_4x_*)      UI button assets
+|  `- Weapons.png (+ _upscayl_4x_*)       weapon icons
 +- sfx/                   .wav samples plus Populous.CUST tracker module
 +- scenarios/
 |  `- scenario_01_plateau.yaml   bundled M8 scenario (flat plateau)

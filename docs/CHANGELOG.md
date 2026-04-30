@@ -1,5 +1,104 @@
 ## 2026-04-30
 
+### Additions and New Features
+- Upscayl runtime source-art tranche (plan
+  [docs/active_plans/UPSCAYL_RUNTIME_SOURCE_ART.md](active_plans/UPSCAYL_RUNTIME_SOURCE_ART.md);
+  draft committed at [/Users/vosslab/.claude/plans/prancy-hopping-marshmallow.md](../../../.claude/plans/prancy-hopping-marshmallow.md)).
+  Atlas geometry stays in original logical pixels; runtime cropping
+  multiplies by `source_scale` and resizes per-frame.
+  - Patch 1: `populous_game/sheet_registry.py` adds `ASSET_SHEETS`
+    role mapping for `tiles_1..4`, `sprites_amiga`, `sprites_generic`,
+    `ui`, `ui_click`, `buttons`, `weapons`. Each candidate declares
+    `source_scale` (4 for Upscayl, 1 for original PNG); the loader
+    does not infer scale from filename or pixel ratio. Roles with a
+    declared `expected_logical_size` are sanity-checked at load time.
+  - Patch 2: `populous_game/sheet_loader.py` adds `load_sheet(role,
+    color_key=None)` and `extract_frame(role, logical_rect,
+    runtime_size, *, scale_filter, color_key, post_mask)`. The crop
+    rect is multiplied by `source_scale` before subsurface; per-frame
+    masks run in source-scaled space; the final smoothscale (or
+    nearest) sizes the cached surface to the runtime target.
+  - Patch 3: `populous_game/terrain.py` `load_tile_surfaces()` routes
+    through the registry/extractor at runtime size
+    `(32 * TERRAIN_SCALE, 24 * TERRAIN_SCALE)`. Smoothscale is used
+    when the resolved sheet is 4x; nearest for 1x.
+  - Patch 4: `populous_game/peeps.py` `load_sprite_surfaces()` routes
+    through the registry/extractor at runtime size
+    `(SPRITE_SIZE * TERRAIN_SCALE, SPRITE_SIZE * TERRAIN_SCALE)`; the
+    residual-black -> alpha mask runs in source-scaled space before
+    smoothscale so silhouettes stay clean through the downscale.
+  - Patch 5: `populous_game/assets.py` HUD/weapons/buttons load via
+    the registry; cached HUD is `(INTERNAL_WIDTH, INTERNAL_HEIGHT)`,
+    weapons are `(16 * HUD_SCALE, 16 * HUD_SCALE)`, buttons are
+    `(34 * HUD_SCALE, 17 * HUD_SCALE)`.
+  - Patch 6: HUD iso-hole punch runs on the cropped source-scaled
+    surface (4x for Upscayl, 1x for original) BEFORE the final
+    smoothscale to internal canvas size, keeping the alpha hole
+    geometry well-defined. Implemented by passing
+    `iso_hole.flood_fill_iso_hole` as the `post_mask` for the HUD
+    extract.
+  - Patch 7: focused tests
+    [tests/test_sheet_registry.py](../tests/test_sheet_registry.py),
+    [tests/test_sheet_loader.py](../tests/test_sheet_loader.py),
+    [tests/test_asset_runtime_sizes.py](../tests/test_asset_runtime_sizes.py),
+    [tests/test_iso_hole_after_4x_load.py](../tests/test_iso_hole_after_4x_load.py),
+    and [tests/test_no_legacy_asset_paths.py](../tests/test_no_legacy_asset_paths.py)
+    pin loader resolution, fallback, source-scaled crop semantics,
+    cached runtime sizes, iso-hole alpha, and a guard against any
+    runtime module reading the legacy `settings.TILES_PATH` /
+    `settings.SPRITES_PATH` constants.
+
+### Fixes and Maintenance
+- Upscayl green-halo follow-up:
+  `populous_game/sheet_masks.py` adds a near-`(0, 49, 0)` background
+  threshold mask plus the legacy residual-black mask. The 4x Upscayl
+  pipeline interpolates the exact-green Amiga background into a band
+  of near-greens that `set_colorkey((0, 49, 0))` (exact-match only)
+  misses, leaving green halos around every iso tile and peep at the
+  remaster preset. `populous_game/terrain.py` and
+  `populous_game/peeps.py` now apply the threshold mask as a
+  per-frame `post_mask` in source-scaled space (before smoothscale),
+  which catches the band cleanly. At source_scale == 1 the masks are
+  no-ops because the exact colorkey already keyed those pixels.
+
+### Behavior or Interface Changes
+- `settings.TILES_PATH` and `settings.SPRITES_PATH` are now lazy
+  module-level aliases derived from `sheet_registry.ASSET_SHEETS`.
+  Runtime modules under `populous_game/` must use
+  `sheet_registry.resolve_role()` / `sheet_loader.load_sheet()`
+  instead. The aliases remain only so non-runtime tooling
+  (`tools/tile_diagnostic.py`) keeps working; removal is tracked in
+  [docs/TODO.md](TODO.md).
+- HUD chrome is now blitted from a surface cached at
+  `(INTERNAL_WIDTH, INTERNAL_HEIGHT)`. Previously, the HUD lived at
+  logical 320x200 and was rescaled at blit time. Click projection
+  math is unchanged because all hit-testing still divides by
+  `HUD_SCALE` in logical coordinates.
+
+### Decisions and Failures
+- Architect decision: `source_scale` is declared per registry entry,
+  not inferred from filename suffix or measured pixel ratio. This
+  avoids ambiguity if a future renamed asset breaks the suffix
+  convention.
+- Architect decision: iso-hole punch runs in source-scaled space for
+  the 4x sheet and the final smoothscale happens after the punch.
+  Punching after a downscale would smear the alpha edge.
+- Reviewer decision: visual smoke is reviewer-by-eye only. No
+  automated pixel-diff gate; smoothscale and platform image backends
+  vary slightly. Automated gates check sizes, source selection, crop
+  scaling, and hit-test/projection invariance.
+- Reviewer decision: `settings.TILES_PATH` / `settings.SPRITES_PATH`
+  are not retained as independent asset paths. They became registry-
+  derived deprecated aliases plus a guard test, to avoid the
+  two-sources-of-truth bug class.
+
+### Developer Tests and Notes
+- Visual smoke evidence at `/tmp/upscayl_remaster.png` (640x400) and
+  `/tmp/upscayl_classic.png` (320x200). Title menu renders cleanly
+  through the new pipeline.
+- Combined focused gate (72 tests) and pyflakes/ASCII/indentation
+  gates pass after the migration.
+
 ### Fixes and Maintenance
 - Round 2 review fixes (post code-reviewer pass):
   - `populous_game/terrain.py` `_randomize_islands` now calls
